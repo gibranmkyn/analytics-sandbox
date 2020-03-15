@@ -1,0 +1,170 @@
+---
+title: "Untitled"
+author: "Gibran Makyanie"
+date: "26/02/2020"
+output: html_document
+---
+
+```{r}
+rm(list = ls()) # cleans the memory
+library(tidyverse)
+library(DataExplorer)
+library(elo)
+library(fuzzyjoin)
+```
+
+
+Content
+
+This dataset includes 41,586 results of international football matches starting from the very first official match in 1972 up to 2019. The matches range from FIFA World Cup to FIFI Wild Cup to regular friendly matches. The matches are strictly men's full internationals and the data does not include Olympic Games or matches where at least one of the teams was the nation's B-team, U-23 or a league select team.
+
+results.csv includes the following columns:
+
+date - date of the match
+home_team - the name of the home team
+away_team - the name of the away team
+home_score - full-time home team score including extra time, not including penalty-shootouts
+away_score - full-time away team score including extra time, not including penalty-shootouts
+tournament - the name of the tournament
+city - the name of the city/town/administrative unit where the match was played
+country - the name of the country where the match was played
+neutral - TRUE/FALSE column indicating whether the match was played at a neutral venue
+
+
+https://edomt.github.io/Elo-R-WorldCup/
+
+Dataset: https://www.kaggle.com/martj42/international-football-results-from-1872-to-2017
+```{r}
+matches <- read_csv('fifa.csv')
+rankings <- read_csv('fifa_ranking.csv')
+world_cup_matches <- read_csv('WorldCupMatches.csv')
+stadium <- read_csv('stadiums.csv')
+```
+
+
+# Predicting the top 32 countries by calculating ELO score
+
+```{r}
+teams <- data.frame(team = unique(c(matches$home_team, matches$away_team)))
+
+teams <- teams %>% 
+  mutate(elo = 1500)
+
+official_matches <- c('FIFA World Cup', 'FIFA World Cup qualification', 'AFC Asian Cup qualification', 'AFC Asian Cup','UEFA Euro qualification', 'UEFA Euro', 'Copa América qualification', 'Copa América', 'African Cup of Nations qualification', 'African Cup of Nations', 'Gold Cup', 'Gold Cup qualification', 'Oceania Nations Cup qualification','Oceania Nations Cup')
+
+
+official_matches <- c('FIFA World Cup')
+
+matches <- matches %>%
+  filter(date > "2006-01-01", tournament %in% official_matches) %>%
+  arrange(desc(date))
+
+matches <- matches %>%
+  mutate(result = if_else(home_score > away_score, 1,
+                          if_else(home_score == away_score, 0.5, 0)))
+
+```
+
+
+```{r}
+for (i in seq_len(nrow(matches))) {
+  match <- matches[i, ]
+  
+  # Pre-match ratings
+  teamA_elo <- subset(teams, team == match$home_team)$elo
+  teamB_elo <- subset(teams, team == match$away_team)$elo
+  
+  # Let's update our ratings
+  new_elo <- elo.calc(wins.A = match$result,
+                      elo.A = teamA_elo,
+                      elo.B = teamB_elo,
+                      k = 30)
+  
+  # The results come back as a data.frame
+  # with team A's new rating in row 1 / column 1
+  # and team B's new rating in row 1 / column 2
+  teamA_new_elo <- new_elo[1, 1]
+  teamB_new_elo <- new_elo[1, 2]
+  
+  # We then update the ratings for teams A and B
+  # and leave the other teams as they were
+  teams <- teams %>%
+    mutate(elo = if_else(team == match$home_team, teamA_new_elo,
+                         if_else(team == match$away_team, teamB_new_elo, elo)))
+}
+
+```
+
+```{r}
+teams <- teams %>% 
+  filter(elo != 1500) %>%
+  arrange(desc(elo))
+  
+
+description <- rankings %>%
+  distinct(team = country_full, country_abrv, confederation)
+
+
+elo_ranking <- merge(teams, description) %>% arrange(desc(elo))
+
+
+#write.csv(elo_ranking, "elo_ranking_fifa2006.csv")
+write.csv(attend, "attend.csv")
+
+```
+
+
+# Attendance Index
+
+world_cup_matches: https://www.kaggle.com/pavanraj159/fifa-world-cup-1930-to-2014-data-analysis/data
+Stadium capacity: https://data.world/johayes13/football-soccer-stadiums
+```{r}
+# ----- Prepare the dataset
+world_cup_matches_filtered <- world_cup_matches[1:852,] %>%
+  select(Year, Datetime, Stadium, City, Stage, Attendance, HomeTeamInitials, AwayTeamInitials) %>%
+  filter(Stage %in% c('Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F', 'Group G', 'Group H'), Year >= 2006)
+
+stadium_filtered <- stadium %>%
+  select(Stadium, Capacity)
+
+
+
+# ----- Join world cup matches with stadium and calculat attendance index
+attend <- stringdist_left_join(world_cup_matches_filtered,stadium_filtered, by="Stadium") %>%
+  mutate(attend_idx = ifelse(Attendance / Capacity > 1, 1, Attendance / Capacity))
+
+attend %>% filter(is.na(Capacity)) #check if capacity is unknown
+
+
+# ----- Whether it is home or it is away, we attribute the attendance index to the team playing
+attend_1 <- attend %>%
+  mutate(the_team = HomeTeamInitials)
+
+attend_2 <- attend %>%
+  mutate(the_team = AwayTeamInitials)
+
+attend_merged <- bind_rows(attend_1, attend_2) %>%
+  group_by(the_team) %>%
+  summarise(mean_attend_idx = mean(attend_idx)) %>%
+  arrange(desc(mean_attend_idx))
+
+ggplot(attend_merged, aes(x= the_team, y = mean_attend_idx)) +
+  geom_bar(stat="identity", width=1, position = position_dodge(width=0.5)) + 
+  coord_flip()
+```
+
+
+
+```{r}
+
+```
+
+
+
+GDP, distance -> attendance in russia per nation
+
+
+
+
+
+

@@ -1,0 +1,80 @@
+---
+title: "bcg_webscrapper"
+output: html_document
+---
+
+```{r libraries}
+rm(list = ls()) # cleans the memory
+library(xml2)
+library(rvest)
+library(stringr)
+library(dplyr)
+
+```
+
+```{r}
+
+
+#Address of the login webpage
+login<-"https://www.glassdoor.co.uk/profile/login_input.htm"
+
+#create a web session with the desired login address
+pgsession<-html_session(login)
+pgform<-html_form(pgsession)  #in this case the submit is the 2nd form
+filled_form<-set_values(pgform, userEmail="gubron.mailbox@gmail.com", userPassword="xxx")
+submit_form(pgsession, filled_form)
+
+```
+
+
+
+1. selenium to login and automate
+2. sys.sleep(10) to not push too much
+3. Take html source from selinium and feed to rvest to the rest
+
+
+```{r}
+#Address of the login webpage
+login<-"https://stackoverflow.com/users/login?ssrc=head&returnurl=http%3a%2f%2fstackoverflow.com%2f"
+
+#create a web session with the desired login address
+pgsession<-html_session(login)
+pgform<-html_form(pgsession)[[2]]  #in this case the submit is the 2nd form
+filled_form<-set_values(pgform, email="*****", password="*****")
+submit_form(pgsession, filled_form)
+```
+
+```{r}
+https://www.glassdoor.co.uk/Reviews/Boston-Consulting-Group-Associate-Reviews-EI_IE3879.0,23_KO24,33.htm
+
+https://www.glassdoor.co.uk/Reviews/Boston-Consulting-Group-Associate-Reviews-EI_IE3879.0,23_KO24,33_IP2.htm
+
+
+
+https://www.glassdoor.co.uk/Reviews/Boston-Consulting-Group-Associate-Reviews-EI_IE3879.0,23_KO24,33_IP29.htm
+```
+
+
+
+
+https://ropensci.org/tutorials/rselenium_tutorial/
+
+library(RSelenium)
+remDr <- remoteDriver(remoteServerAddr = "localhost"
+                      , port = 4444
+)
+
+remDr$open()
+
+
+
+```{r}
+url <- 'https://www.glassdoor.co.uk/Reviews/Boston-Consulting-Group-Associate-Reviews-EI_IE3879.0,23_KO24,33_IP2.htm'
+bcg <- read_html(url)
+```
+
+
+
+
+
+

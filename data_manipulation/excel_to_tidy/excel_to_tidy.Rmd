@@ -1,0 +1,97 @@
+---
+title: "DM_partB"
+author: "Group A-11"
+date: "2019/11/20"
+output:
+  html_document: default
+  word_document: default
+---
+
+#Load all the libraries required
+
+```{r import libraries, message=FALSE}
+rm(list=ls())
+
+library(dplyr)
+library(tidyverse)
+library(readxl)
+library(tidyr)
+```
+
+#Create an empty dataframe to store the data. We first set the path of the folder with all the data. Next, we get a list all the folders from 'firstfolder' into 'secondfolder'. The 'secondfolder' consists of 39 folders. We delete the secondstudygroup from 'secondfolder' as it has no data. Therefore, we have 38 folders in 'secondfolder' each specific to a country.
+
+```{r files, message=FALSE}
+all_file_contents<-data.frame()
+firstfolder<-"partb_dataset/"
+secondfolder<-list.files(firstfolder)
+secondfolder <- secondfolder[-which((secondfolder == "secondstudygroup"))]
+```
+
+#We use loop function to list all the excel files from each country folder within the 'secondfolder'.We read the data from the excel files to 'this_file_contents' and build the data to get the names of country,flow and products. We remove the unnecessary rows drom the data. Next, we structure the data by using gather() and mutate() and arrange the columns accordingly storing it in 'this_file_contents'. We use rbind to combine all the data into'all_file_contents'.We change the class of the variables to work with the data. 
+
+
+```{r data transformation, message=FALSE}
+for (i in 1:length(secondfolder)){
+	this_folder<-secondfolder[i]
+	#get the list of files for this folder
+	this_folder_path<-paste(firstfolder,this_folder,sep="")
+	this_folder_files<-list.files(this_folder_path, pattern = ".xlsx")
+	# get files under each country
+	
+	
+	 for (k in 1:length(this_folder_files)){
+	 	this_file<-this_folder_files[k]
+	 	this_file_path<-paste(this_folder_path,this_file,sep="/")
+	 	this_file_contents<-read_excel(this_file_path,col_names=FALSE,col_types=NULL, na="..",skip=2) 
+	
+	 	# get the flow, country, and product names
+    this_file_contents.flow<-as.character(this_file_contents[1,3])
+    this_file_contents.country<-as.character(this_file_contents[3,3])
+    this_file_contents.product<-as.character(this_file_contents[4,])
+
+    # remove unnecessary rows
+    colnames(this_file_contents)<-c("year",this_file_contents.product[2:67])
+    this_file_contents<-this_file_contents[,-2]
+    this_file_contents<-this_file_contents[-c(1:5,(nrow(this_file_contents)-2):nrow(this_file_contents)),] # remove the last 3 rows and the first 5 rows
+
+# gather and mutate according to the format
+this_file_contents<-this_file_contents%>%
+  gather(product,value,-year)%>%   # except the year, product and value should be gathered
+  mutate(flow=this_file_contents.flow)%>%
+  mutate(country=this_file_contents.country)
+
+# arrange the columns accordingly
+this_file_contents<-this_file_contents[,c(5,1,4,2,3)] 
+	 all_file_contents<-rbind(all_file_contents,this_file_contents)	
+	 	}
+	 	 }
+	 
+#change the class to work with the data
+all_file_contents$country <- as.factor(all_file_contents$country)
+all_file_contents$year <- as.factor(all_file_contents$year)
+all_file_contents$flow <- as.factor(all_file_contents$flow)
+all_file_contents$product <- as.factor(all_file_contents$product)
+all_file_contents$value <- as.numeric(all_file_contents$value)
+	 	 
+```
+
+#We get the total number of records in the dataset by using nrow() function. We also calculate the total number of records for each product across countries across years using group_by().
+
+```{r answers}
+
+#total number of records on the dataset
+(total_number_of_records<-nrow(all_file_contents))
+
+#total number of records for each product accross counries across year
+all_file_contents %>% group_by(country,year,product) %>% count(product)
+
+```
+#We run a test to check the data(PLEASE IGNORE!)
+
+```{r testing ground}
+all_file_contents %>% filter(country == 'Austria',year == '1964', product == 'Brown coal (if no detail)', flow == 'Total primary energy supply' )
+
+head(all_file_contents)
+  
+```
+

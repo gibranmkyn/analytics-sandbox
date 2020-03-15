@@ -1,0 +1,398 @@
+---
+title: "text_partB"
+author: "Gibran Makyanie"
+date: "08/03/2020"
+output: html_document
+---
+
+
+```{r}
+rm(list = ls())
+library(dplyr)
+library(RSQLite)
+library(udpipe)
+library(cld3)
+library(tm)
+library(ggplot2)
+library(gridExtra)
+library(stm)
+library(quanteda)
+library(textfeatures)
+library(sentimentr)
+library(qdap)
+library(lubridate)
+library(stargazer)
+library(readr)
+```
+
+
+Sources: 
+https://cran.r-project.org/web/packages/textfeatures/textfeatures.pdf
+https://datascienceplus.com/automated-text-feature-engineering-using-textfeatures-in-r/
+
+```{r}
+t1 <- Sys.time()
+```
+
+
+```{r}
+
+# ----- Data Importing
+conn <- dbConnect(RSQLite::SQLite(), "inside_airbnb.db") 
+
+
+# ----- Select listings
+listing_sample <- dbGetQuery(conn, 'SELECT * FROM listing limit 500') %>%
+  mutate(lang = detect_language(description)) %>% 
+  rename(listing_id = id) %>%
+  filter(lang == 'en') %>%
+  mutate(listing_id = as.character(listing_id)) %>%
+  mutate(calendar_last_scraped = as_date(as.integer(calendar_last_scraped))) %>%
+  group_by(listing_id) %>%
+  mutate(calendar_last_scraped_latest = max(calendar_last_scraped)) %>%
+  filter(calendar_last_scraped_latest == calendar_last_scraped) %>%
+  select(-calendar_last_scraped_latest) %>%
+  filter(number_of_reviews > 10)
+  
+
+# ----- Select owners of the listings
+host_distinct <- unique(listing_sample$host_id)
+host_sample <- dbGetQuery(conn, paste('SELECT host_id, host_name FROM host WHERE host_id IN(', paste(host_distinct, collapse = ","), ')'))  %>% 
+  distinct(host_id, host_name)
+
+
+# ----- Select reviews of the listings
+listing_distinct <- listing_sample %>%  distinct(listing_id)
+
+review_sample <- dbGetQuery(conn,paste('SELECT * FROM review WHERE listing_id IN', substring(paste(listing_distinct,collapse = ","),2))) %>%
+  mutate(lang = detect_language(comments)) %>%
+  mutate(date = as_date(date)) %>%
+  mutate(listing_id = as.character(listing_id)) %>%
+  filter(lang == 'en') 
+
+
+
+dbDisconnect(conn)
+
+
+rm(listing_distinct)
+rm(host_distinct)
+```
+
+
+```{r}
+reviewsNum <- review_sample %>% group_by(date = review_sample$date) %>% summarise(number = n())
+
+ggplot(reviewsNum, aes(date, number)) +
+           geom_point(na.rm=TRUE, color = "#007A87", alpha=0.5) +geom_smooth(color = "#FF5A5F")+
+  ggtitle("How popular is Airbnb?",
+          subtitle = "Number of Reviews across years") +
+  labs(x = "Year", y = "Unique listings recieving reviews") +
+  theme(plot.title = element_text(face = "bold")) +
+  theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+  theme(plot.caption = element_text(color = "grey68"))
+
+rm(reviewsNum)
+```
+
+
+# Data Prep
+```{r}
+
+added_stop_words <- c('amsterdam', 'apartment', 'place', 'house','room', 'stay', 'airbnb','bnb')
+clean_corpus <- function(corpus){
+#  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removeWords, words = c(stopwords("en"), added_stop_words ))
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, removeNumbers)
+  return(corpus)
+}
+
+```
+
+
+# Annotate Reviews
+```{r}
+
+# ----- Clean comments
+x <- VCorpus(VectorSource(review_sample$comments))
+x <- clean_corpus(x)
+cleaned_comments <- as.data.frame(x) # qdap's function to convert corpus to df
+review_sample$cleaned_comments <- cleaned_comments$text
+
+rm(x)
+rm(cleaned_comments)
+
+# ----- tokennise, lemmatise, and POS tag per listing
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+review_annotate <- data.frame(udpipe_annotate(ud_model, x = review_sample$cleaned_comments, doc_id = review_sample$id)) 
+
+x <- review_annotate %>%
+  rename(id = doc_id) %>%
+  mutate(id = as.integer(id)) %>%
+  group_by(id) %>%
+  filter(upos %in% c("ADV","ADJ","NOUN", "AUX", "PART")) %>% # aux and part to capture negations 'did not'
+  summarise(lemma_reviews = paste(lemma, collapse = " "))
+
+review_sample <- review_sample %>% left_join(x)
+
+rm(x)
+rm(ud_model)
+```
+
+
+```{r}
+grid.arrange(
+review_annotate %>%
+  filter(upos %in% c('NOUN')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
+
+review_annotate %>%
+  filter(upos %in% c('ADJ')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
+
+
+review_annotate %>%
+  filter(upos %in% c('ADV')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip()
+)
+```
+
+
+
+# Text Feature Extraction for reviews data
+textfeatures function can easily extract generic features (e.g., number of words, line breaks, characters per word, lower case, upper case, commas, periods, exclamation points, etc.) from strings of text with a considerable good speed.
+```{r}
+# ----- Get features from uncleaned comments
+features <- textfeatures(review_sample$comments, normalize = FALSE, word_dims = FALSE, sentiment = TRUE)
+
+# ----- Get sentiment from cleaned comments with sentimentr package
+text <- get_sentences(review_sample$lemma_reviews)
+review_sample$sentimentr <- as.data.frame(sentiment_by(text))$ave_sentiment
+
+
+# ----- Whether host name is mentioned in the comments
+review_sample <- review_sample %>%
+  left_join(listing_sample %>% select(listing_id, host_id)) %>% 
+  left_join(host_sample %>% distinct(host_id, host_name)) %>%
+  mutate(host_mentioned = as.numeric(grepl(host_name,comments, ignore.case = TRUE)))
+
+# ----- DF about comments features
+review_sample <-  bind_cols(review_sample, features)
+
+
+hist(review_sample$sentimentr, breaks = 200)
+hist(review_sample$sent_bing, breaks = 200)
+hist(review_sample$sent_afinn, breaks = 200)
+hist(review_sample$sent_vader, breaks = 200)
+hist(review_sample$n_polite, breaks = 200)
+hist(review_sample$n_chars, breaks = 200)
+
+# ----- Aggerate reviews per listing
+review_agg <- review_sample %>%
+  select(-c(reviewer_id, id)) %>%
+  group_by(listing_id, file_name) %>%
+  summarise_if(is.numeric, mean, na.rm = TRUE)
+
+
+rm(text)
+rm(features)
+```
+
+
+Sentimentr attempts to take into account valence shifters (i.e.,
+negators, amplifiers (intensifiers), de-amplifiers (downtoners), and
+adversative conjunctions) while maintaining speed
+
+https://cran.r-project.org/web/packages/sentimentr/readme/README.html
+
+
+# Text Feature Extraction for listing_data
+```{r}
+remove_columns <- c('street', 'neighbourhood', 'neighbourhood_group_cleansed', 'market', 'latitude','longitude', 'is_location_exact', 'square_feet', 'license', 'calculated_host_listings_count_entire_homes', 'calculated_host_listings_count_private_rooms', 'calculated_host_listings_count_shared_rooms','reviews_per_month', 'last_searched', 'region_id', 'region_name', 'region_parent_id', 'region_parent_name', 'region_parent_parent_id', 'region_parent_parent_name', 'price', 'weekly_price', 'monthly_price', 'minimum_nights', 'maximum_nights', 'minimum_minimum_nights', 'maximum_minimum_nights', 'minimum_maximum_nights', 'maximum_maximum_nights', 'has_availability')
+
+listing_sample <- listing_sample %>%
+  select(-remove_columns)
+
+
+
+```
+
+```{r}
+# ----- Clean comments
+listing_sample$amenities
+
+rm(x)
+rm(cleaned_text_listings)
+
+# ----- tokennise, lemmatise, and POS tag per listing
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+listings_annotate <- data.frame(udpipe_annotate(ud_model, x = listing_sample$amenities, doc_id = listing_sample$listing_id))
+
+x <- review_annotate %>%
+  rename(id = doc_id) %>%
+  mutate(id = as.integer(id)) %>%
+  group_by(id) %>%
+  filter(upos %in% c("ADV","ADJ","NOUN", "AUX", "PART")) %>% # aux and part to capture negations 'did not'
+  summarise(lemma_reviews = paste(lemma, collapse = " "))
+
+review_sample <- review_sample %>% left_join(x)
+
+rm(x)
+rm(ud_model)
+```
+
+
+
+
+# Feature Extraction from calendar
+```{r}
+# ----- dataprep calendar
+ams_calendar2020 <- read_csv('amsterdam_012020_calendar.csv.gz') %>% select(listing_id, date, available, price)
+ams_calendar2019 <- read_csv('amsterdam_012019_calendar.csv.gz') %>% select(listing_id, date, available, price)
+ams_calendar2018 <- read_csv('amsterdam_042018_calendar.csv.gz') %>% select(listing_id, date, available, price)
+
+combinedCalendar <- rbind(ams_calendar2020, ams_calendar2019, ams_calendar2018) %>% 
+  filter(year(date) <= 2019) %>%
+  mutate(booked = ifelse(available==FALSE, 1, 0)) %>%
+  mutate(price = as.numeric(gsub(",", "", substring(price, 2))))  %>%
+  mutate(listing_id = as.character(listing_id))
+
+rm(ams_calendar2020)
+rm(ams_calendar2019)
+rm(ams_calendar2018)
+
+listings_calendar <- combinedCalendar %>% 
+  group_by(listing_id) %>% 
+  summarise(total_booked = sum(booked, na.rm = TRUE), total_dates = n(), average_price = mean(price, na.rm = TRUE)) %>% 
+  mutate(percent_booked = (total_booked/total_dates)*100)
+```
+
+
+
+# Final dataframe
+```{r}
+
+final_df <- listing_sample %>%
+  inner_join(review_agg, by = 'listing_id') %>% # inner join is used to ensure that the selected listings has reviews
+  inner_join(listings_calendar %>% select(listing_id, average_price, percent_booked), by = 'listing_id')
+
+rm(review_agg)
+```
+
+
+
+
+
+
+
+
+
+
+
+# Predicting Price with Beta Regression
+
+
+```{r}
+reviewsNum <- review_sample %>% group_by(date = review_sample$date) %>% summarise(number = n())
+
+ggplot(reviewsNum, aes(date, number)) +
+           geom_point(na.rm=TRUE, color = "#007A87", alpha=0.5) +geom_smooth(color = "#FF5A5F")+
+  ggtitle("How popular is Airbnb?",
+          subtitle = "Number of Reviews across years") +
+  labs(x = "Year", y = "Unique listings recieving reviews") +
+  theme(plot.title = element_text(face = "bold")) +
+  theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+  theme(plot.caption = element_text(color = "grey68"))
+
+rm(reviewsNum)
+```
+
+
+```{r}
+ggplot(data = final_df, aes(x = sentimentr, y = review_scores_rating)) + 
+  geom_jitter() +
+  geom_smooth()
+
+
+final_df %>%
+  filter(review_scores_rating == 100)
+
+
+model1 <- lm(log(final_df$review_scores_rating)~final_df$sent_bing)
+model2 <- lm(log(final_df$review_scores_rating)~final_df$sent_afinn)
+model3 <- lm(log(final_df$review_scores_rating)~final_df$sentimentr)
+plot(model1)
+
+stargazer(model1,model2,model3,type = "text")
+
+ggplot(final_df, aes())
+
+
+```
+
+
+
+# Calendar Data
+
+```{r}
+groupedCalendarAll <- combinedCalendar %>%
+  group_by(date = date) %>% 
+  summarise(average_price = mean(price, na.rm = TRUE)) %>% 
+  mutate(year = as.factor(as.character(year(date))))
+
+
+# ----- Plotting Seasonality in Price
+ggplot(groupedCalendarAll, aes(x = month(date), y=average_price)) +
+           geom_point(na.rm=TRUE, alpha=0.5, color = "#007A87") + geom_smooth(color = "#FF5A5F")+ facet_grid(~year)+
+  ggtitle("Seasonality in Price",
+          subtitle = "Average listing price across Months") +
+  labs(x = "Month", y = "Average price across Listings") +
+  theme(plot.title = element_text(face = "bold")) +
+  theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+  scale_x_continuous(breaks = c(3, 6, 9, 12))
+
+rm(groupedCalendarAll)
+```
+
+# Occupancy Rate
+```{r}
+airbnb_occ_rate <- combinedCalendar %>% 
+  group_by(date = date) %>% 
+  summarise(totalBooked = sum(booked, na.rm = TRUE), totalListings = n()) %>% 
+  mutate(percent_booked = (totalBooked/totalListings)*100) %>%
+  mutate(year = year(date))
+
+ggplot(airbnb_occ_rate, aes(x = month(date), y = percent_booked)) +
+  geom_jitter(na.rm=TRUE, alpha=0.5, color = "#007A87") +
+  geom_smooth(color = "#FF5A5F") +
+  facet_grid(~year) +
+  ggtitle("Occupancy Rate Overtime") +
+  labs(x = "Month", y = "Occupancy Rate") +
+  theme(plot.title = element_text(face = "bold")) +
+  theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+  scale_x_continuous(breaks = c(3, 6, 9, 12))
+
+rm(airbnb_occ_rate)
+
+```
+
+

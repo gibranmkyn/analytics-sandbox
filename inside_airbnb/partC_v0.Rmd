@@ -1,0 +1,176 @@
+---
+title: "Untitled"
+author: "Gibran Makyanie"
+date: "05/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(dplyr)
+library(RSQLite)
+library(udpipe)
+library(cld3)
+library(tm)
+library(ggplot2)
+library(gridExtra)
+library(stm)
+library(quanteda)
+
+```
+
+Maybe just read the list on ETL
+
+https://www.machinelearningplus.com/nlp/topic-modeling-visualization-how-to-present-results-lda-models/
+
+```{r}
+start_time <- Sys.time()
+conn <- dbConnect(RSQLite::SQLite(), "inside_airbnb.db") 
+
+review_sample <- dbGetQuery(conn,'SELECT * FROM review WHERE file_name = "Amsterdam_reviews.csv.gz" limit 5000') %>%
+  mutate(lang = detect_language(comments)) %>%
+  filter(lang == 'en')
+
+
+
+```
+
+# Build corpus
+```{r}
+# ----- Create the clean_corpus function
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removeWords, words = c(stopwords("en"),"amsterdam"))
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, removeNumbers)
+  return(corpus)
+}
+
+# ----- Corpus builder
+reviews_corpus_source <- VectorSource(review_sample$comments) 
+reviews_corpus <- VCorpus(reviews_corpus_source)
+reviews_corpus_cleaned <- clean_corpus(reviews_corpus)
+
+# ----- Create vector of cleaned comments
+x <- NULL
+for (i in 1:length(reviews_corpus_cleaned)) {
+  x1 <- as.character(reviews_corpus_cleaned[[i]]$content) 
+  x <- c(x, x1)
+}
+
+clean_df <- data.frame(review_sample, x)
+
+```
+
+
+# Annotate 
+```{r}
+
+# ----- tokennise, lemmatise, and POS tag per listing
+ud_model <- udpipe_download_model(language = "english")
+ud_model <- udpipe_load_model(ud_model$file_model)
+review_annotate <- data.frame(udpipe_annotate(ud_model, x = clean_df$x, doc_id = clean_df$listing_id)) 
+
+
+
+
+
+```
+
+```{r}
+grid.arrange(
+review_annotate %>%
+  filter(upos %in% c('NOUN')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
+
+review_annotate %>%
+  filter(upos %in% c('ADJ')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip()
+
+)
+  
+```
+RAKE is one of the most popular (unsupervised) algorithms for extracting keywords in Information retrieval. RAKE short for Rapid Automatic Keyword Extraction algorithm, is a domain independent keyword extraction algorithm which tries to determine key phrases in a body of text by analyzing the frequency of word appearance and its co-occurrence with other words in the text.
+
+```{r}
+stats_rake <- keywords_rake(x = review_annotate, term = "lemma", group = "doc_id", 
+                       relevant = review_annotate$upos %in% c("NOUN", "ADJ"))
+
+
+stats_rake %>%
+  filter(ngram == 2) %>%
+  arrange(desc(rake)) %>%
+  head(n =20) %>%
+  mutate(keyword=factor(keyword, levels=keyword)) %>%
+  ggplot(aes(x=keyword, y = freq )) + geom_col() + coord_flip() + labs(title = 'Two words that are most likely to appear together')
+  
+
+```
+
+```{r}
+## Using a sequence of POS tags (noun phrases / verb phrases)
+review_annotate$phrase_tag <- as_phrasemachine(review_annotate$upos, type = "upos")
+stats <- keywords_phrases(x = review_annotate$phrase_tag, term = tolower(review_annotate$token), 
+                          pattern = "(A|N)*N(P+D*(A|N)*N)*", 
+                          is_regex = TRUE, detailed = FALSE)
+
+
+stats %>%
+  filter(ngram > 1) %>%
+  arrange(desc(freq)) %>% 
+  head(n =20) %>%
+  mutate(keyword=factor(keyword, levels=keyword)) %>%
+  ggplot(aes(x=keyword, y = freq )) + geom_col() + coord_flip() + labs(title = 'Most common phrases')
+```
+
+## Topic Modelling
+
+# process the already cleaned comments
+processed <- textProcessor(clean_df$comments,
+                           metadata = clean_df,
+                           customstopwords = c("airbnb"),
+                           stem = F)
+
+threshold <- round(1/100 * length(clean_df$comments),0) # set threshold as 1% of the comments
+
+out <- prepDocuments(processed$documents,
+                     processed$vocab,
+                     processed$meta,
+                     lower.thresh = threshold)
+
+
+https://www.aclweb.org/anthology/U15-1013.pdf 
+
+Topic modelling with noun only approach
+```{r}
+
+review_annotate_noun <- review_annotate %>%
+  filter(upos %in% c("NOUN", "VERB"))
+
+quant_dfm <- dfm(review_annotate_noun$lemma, groups = review_annotate_noun$doc_id)
+
+
+my_lda_fit20 <- stm(quant_dfm, K = 5, verbose = FALSE)
+
+
+plot(my_lda_fit20)  
+summary(my_lda_fit20)
+    # searchK
+
+end_time <- Sys.time()
+end_time - start_time #record how long it takes
+
+```
+
+

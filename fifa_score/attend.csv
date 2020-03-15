@@ -1,0 +1,165 @@
+"","Year","Datetime","Stadium.x","City","Stage","Attendance","HomeTeamInitials","AwayTeamInitials","Stadium.y","Capacity","attend_idx"
+"1",2006,"09 Jun 2006 - 18:00","FIFA World Cup Stadium, Munich","Munich","Group A",66000,"GER","CRC","FIFA World Cup Stadium, Munich",75024,0.879718490083173
+"2",2006,"09 Jun 2006 - 21:00","FIFA World Cup Stadium, Gelsenkirchen","Gelsenkirchen","Group A",52000,"POL","ECU","FIFA World Cup Stadium, Gelsenkirchen",62271,0.83505965858907
+"3",2006,"10 Jun 2006 - 15:00","FIFA World Cup Stadium, Frankfurt","Frankfurt/Main","Group B",48000,"ENG","PAR","FIFA World Cup Stadium, Frankfurt",51500,0.932038834951456
+"4",2006,"10 Jun 2006 - 18:00","FIFA World Cup Stadium, Dortmund","Dortmund","Group B",62959,"TRI","SWE","FIFA World Cup Stadium, Dortmund",81359,0.77384186137981
+"5",2006,"10 Jun 2006 - 21:00","FIFA World Cup Stadium, Hamburg","Hamburg","Group C",49480,"ARG","CIV","FIFA World Cup Stadium, Hamburg",57274,0.863917309774069
+"6",2006,"11 Jun 2006 - 15:00","Zentralstadion","Leipzig","Group C",43000,"SCG","NED","Zentralstadion",44345,0.969669635810125
+"7",2006,"11 Jun 2006 - 18:00","Franken-Stadion","Nuremberg","Group D",41000,"MEX","IRN","Frankenstadion",17284,1
+"8",2006,"11 Jun 2006 - 21:00","FIFA World Cup Stadium, Cologne","Cologne","Group D",45000,"ANG","POR","FIFA World Cup Stadium, Cologne",50374,0.893317981498392
+"9",2006,"12 Jun 2006 - 15:00","Fritz-Walter-Stadion","Kaiserslautern","Group F",46000,"AUS","JPN","Fritz-Walter-Stadion",49780,0.924065889915629
+"10",2006,"12 Jun 2006 - 18:00","FIFA World Cup Stadium, Gelsenkirchen","Gelsenkirchen","Group E",52000,"USA","CZE","FIFA World Cup Stadium, Gelsenkirchen",62271,0.83505965858907
+"11",2006,"12 Jun 2006 - 21:00","FIFA World Cup Stadium, Hanover","Hanover","Group E",43000,"ITA","GHA","FIFA World Cup Stadium, Hanover",49951,0.860843626754219
+"12",2006,"13 Jun 2006 - 15:00","FIFA World Cup Stadium, Frankfurt","Frankfurt/Main","Group G",48000,"KOR","TOG","FIFA World Cup Stadium, Frankfurt",51500,0.932038834951456
+"13",2006,"13 Jun 2006 - 18:00","Gottlieb-Daimler-Stadion","Stuttgart","Group G",52000,"FRA","SUI","Gottlieb-Daimler-Stadion",60441,0.860343144554193
+"14",2006,"13 Jun 2006 - 21:00","Olympiastadion","Berlin","Group F",72000,"BRA","CRO","Olympiastadion",40600,1
+"15",2006,"13 Jun 2006 - 21:00","Olympiastadion","Berlin","Group F",72000,"BRA","CRO","Olympiastadion",74475,0.966767371601209
+"16",2006,"13 Jun 2006 - 21:00","Olympiastadion","Berlin","Group F",72000,"BRA","CRO","Olympiastadion",69250,1
+"17",2006,"13 Jun 2006 - 21:00","Olympiastadion","Berlin","Group F",72000,"BRA","CRO","Olympia Stadion",17200,1
+"18",2006,"14 Jun 2006 - 15:00","Zentralstadion","Leipzig","Group H",43000,"ESP","UKR","Zentralstadion",44345,0.969669635810125
+"19",2006,"14 Jun 2006 - 18:00","FIFA World Cup Stadium, Munich","Munich","Group H",66000,"TUN","KSA","FIFA World Cup Stadium, Munich",75024,0.879718490083173
+"20",2006,"14 Jun 2006 - 21:00","FIFA World Cup Stadium, Dortmund","Dortmund","Group A",65000,"GER","POL","FIFA World Cup Stadium, Dortmund",81359,0.798928207082191
+"21",2006,"15 Jun 2006 - 15:00","FIFA World Cup Stadium, Hamburg","Hamburg","Group A",50000,"ECU","CRC","FIFA World Cup Stadium, Hamburg",57274,0.872996473094249
+"22",2006,"15 Jun 2006 - 18:00","Franken-Stadion","Nuremberg","Group B",41000,"ENG","TRI","Frankenstadion",17284,1
+"23",2006,"15 Jun 2006 - 21:00","Olympiastadion","Berlin","Group B",72000,"SWE","PAR","Olympiastadion",40600,1
+"24",2006,"15 Jun 2006 - 21:00","Olympiastadion","Berlin","Group B",72000,"SWE","PAR","Olympiastadion",74475,0.966767371601209
+"25",2006,"15 Jun 2006 - 21:00","Olympiastadion","Berlin","Group B",72000,"SWE","PAR","Olympiastadion",69250,1
+"26",2006,"15 Jun 2006 - 21:00","Olympiastadion","Berlin","Group B",72000,"SWE","PAR","Olympia Stadion",17200,1
+"27",2006,"16 Jun 2006 - 15:00","FIFA World Cup Stadium, Gelsenkirchen","Gelsenkirchen","Group C",52000,"ARG","SCG","FIFA World Cup Stadium, Gelsenkirchen",62271,0.83505965858907
+"28",2006,"16 Jun 2006 - 18:00","Gottlieb-Daimler-Stadion","Stuttgart","Group C",52000,"NED","CIV","Gottlieb-Daimler-Stadion",60441,0.860343144554193
+"29",2006,"16 Jun 2006 - 21:00","FIFA World Cup Stadium, Hanover","Hanover","Group D",43000,"MEX","ANG","FIFA World Cup Stadium, Hanover",49951,0.860843626754219
+"30",2006,"17 Jun 2006 - 15:00","FIFA World Cup Stadium, Frankfurt","Frankfurt/Main","Group D",48000,"POR","IRN","FIFA World Cup Stadium, Frankfurt",51500,0.932038834951456
+"31",2006,"17 Jun 2006 - 18:00","FIFA World Cup Stadium, Cologne","Cologne","Group E",45000,"CZE","GHA","FIFA World Cup Stadium, Cologne",50374,0.893317981498392
+"32",2006,"17 Jun 2006 - 21:00","Fritz-Walter-Stadion","Kaiserslautern","Group E",46000,"ITA","USA","Fritz-Walter-Stadion",49780,0.924065889915629
+"33",2006,"18 Jun 2006 - 15:00","Franken-Stadion","Nuremberg","Group F",41000,"JPN","CRO","Frankenstadion",17284,1
+"34",2006,"18 Jun 2006 - 18:00","FIFA World Cup Stadium, Munich","Munich","Group F",66000,"BRA","AUS","FIFA World Cup Stadium, Munich",75024,0.879718490083173
+"35",2006,"18 Jun 2006 - 21:00","Zentralstadion","Leipzig","Group G",43000,"FRA","KOR","Zentralstadion",44345,0.969669635810125
+"36",2006,"19 Jun 2006 - 15:00","FIFA World Cup Stadium, Dortmund","Dortmund","Group G",65000,"TOG","SUI","FIFA World Cup Stadium, Dortmund",81359,0.798928207082191
+"37",2006,"19 Jun 2006 - 18:00","FIFA World Cup Stadium, Hamburg","Hamburg","Group H",50000,"KSA","UKR","FIFA World Cup Stadium, Hamburg",57274,0.872996473094249
+"38",2006,"19 Jun 2006 - 21:00","Gottlieb-Daimler-Stadion","Stuttgart","Group H",52000,"ESP","TUN","Gottlieb-Daimler-Stadion",60441,0.860343144554193
+"39",2006,"20 Jun 2006 - 16:00","Olympiastadion","Berlin","Group A",72000,"ECU","GER","Olympiastadion",40600,1
+"40",2006,"20 Jun 2006 - 16:00","Olympiastadion","Berlin","Group A",72000,"ECU","GER","Olympiastadion",74475,0.966767371601209
+"41",2006,"20 Jun 2006 - 16:00","Olympiastadion","Berlin","Group A",72000,"ECU","GER","Olympiastadion",69250,1
+"42",2006,"20 Jun 2006 - 16:00","Olympiastadion","Berlin","Group A",72000,"ECU","GER","Olympia Stadion",17200,1
+"43",2006,"20 Jun 2006 - 16:00","FIFA World Cup Stadium, Hanover","Hanover","Group A",43000,"CRC","POL","FIFA World Cup Stadium, Hanover",49951,0.860843626754219
+"44",2006,"20 Jun 2006 - 21:00","FIFA World Cup Stadium, Cologne","Cologne","Group B",45000,"SWE","ENG","FIFA World Cup Stadium, Cologne",50374,0.893317981498392
+"45",2006,"20 Jun 2006 - 21:00","Fritz-Walter-Stadion","Kaiserslautern","Group B",46000,"PAR","TRI","Fritz-Walter-Stadion",49780,0.924065889915629
+"46",2006,"21 Jun 2006 - 16:00","Zentralstadion","Leipzig","Group D",38000,"IRN","ANG","Zentralstadion",44345,0.85691735257639
+"47",2006,"21 Jun 2006 - 16:00","FIFA World Cup Stadium, Gelsenkirchen","Gelsenkirchen","Group D",52000,"POR","MEX","FIFA World Cup Stadium, Gelsenkirchen",62271,0.83505965858907
+"48",2006,"21 Jun 2006 - 21:00","FIFA World Cup Stadium, Frankfurt","Frankfurt/Main","Group C",48000,"NED","ARG","FIFA World Cup Stadium, Frankfurt",51500,0.932038834951456
+"49",2006,"21 Jun 2006 - 21:00","FIFA World Cup Stadium, Munich","Munich","Group C",66000,"CIV","SCG","FIFA World Cup Stadium, Munich",75024,0.879718490083173
+"50",2006,"22 Jun 2006 - 16:00","FIFA World Cup Stadium, Hamburg","Hamburg","Group E",50000,"CZE","ITA","FIFA World Cup Stadium, Hamburg",57274,0.872996473094249
+"51",2006,"22 Jun 2006 - 16:00","Franken-Stadion","Nuremberg","Group E",41000,"GHA","USA","Frankenstadion",17284,1
+"52",2006,"22 Jun 2006 - 21:00","FIFA World Cup Stadium, Dortmund","Dortmund","Group F",65000,"JPN","BRA","FIFA World Cup Stadium, Dortmund",81359,0.798928207082191
+"53",2006,"22 Jun 2006 - 21:00","Gottlieb-Daimler-Stadion","Stuttgart","Group F",52000,"CRO","AUS","Gottlieb-Daimler-Stadion",60441,0.860343144554193
+"54",2006,"23 Jun 2006 - 16:00","Olympiastadion","Berlin","Group H",72000,"UKR","TUN","Olympiastadion",40600,1
+"55",2006,"23 Jun 2006 - 16:00","Olympiastadion","Berlin","Group H",72000,"UKR","TUN","Olympiastadion",74475,0.966767371601209
+"56",2006,"23 Jun 2006 - 16:00","Olympiastadion","Berlin","Group H",72000,"UKR","TUN","Olympiastadion",69250,1
+"57",2006,"23 Jun 2006 - 16:00","Olympiastadion","Berlin","Group H",72000,"UKR","TUN","Olympia Stadion",17200,1
+"58",2006,"23 Jun 2006 - 16:00","Fritz-Walter-Stadion","Kaiserslautern","Group H",46000,"KSA","ESP","Fritz-Walter-Stadion",49780,0.924065889915629
+"59",2006,"23 Jun 2006 - 21:00","FIFA World Cup Stadium, Cologne","Cologne","Group G",45000,"TOG","FRA","FIFA World Cup Stadium, Cologne",50374,0.893317981498392
+"60",2006,"23 Jun 2006 - 21:00","FIFA World Cup Stadium, Hanover","Hanover","Group G",43000,"SUI","KOR","FIFA World Cup Stadium, Hanover",49951,0.860843626754219
+"61",2010,"11 Jun 2010 - 16:00","Soccer City Stadium","Johannesburg","Group A",84490,"RSA","MEX","Soccer City Stadium",94736,0.891846816416146
+"62",2010,"11 Jun 2010 - 20:30","Cape Town Stadium","Cape Town","Group A",64100,"URU","FRA","Cape Town Stadium",55000,1
+"63",2010,"12 Jun 2010 - 13:30","Port Elizabeth Stadium","Nelson Mandela Bay/Port Elizabeth","Group B",31513,"KOR","GRE","Port Elizabeth Stadium",48459,0.650302317422976
+"64",2010,"12 Jun 2010 - 16:00","Ellis Park Stadium","Johannesburg","Group B",55686,"ARG","NGA","Ellis Park Stadium",62567,0.890021896526923
+"65",2010,"12 Jun 2010 - 20:30","Royal Bafokeng Sports Palace","Phokeng","Group C",38646,"ENG","USA","Royal Bafokeng Sports Palace",44530,0.867864361104873
+"66",2010,"13 Jun 2010 - 13:30","Peter Mokaba Stadium","Polokwane","Group C",30325,"ALG","SVN","Peter Mokaba Stadium",41733,0.726643184050991
+"67",2010,"13 Jun 2010 - 16:00","Loftus Versfeld Stadium","Tshwane/Pretoria","Group D",38833,"SRB","GHA","Loftus Versfeld Stadium",51762,0.750222170704378
+"68",2010,"13 Jun 2010 - 20:30","Durban Stadium","Durban","Group D",62660,"GER","AUS","Durban Stadium",56000,1
+"69",2010,"14 Jun 2010 - 13:30","Soccer City Stadium","Johannesburg","Group E",83465,"NED","DEN","Soccer City Stadium",94736,0.881027275798007
+"70",2010,"14 Jun 2010 - 16:00","Free State Stadium","Mangaung/Bloemfontein","Group E",30620,"JPN","CMR","Free State Stadium",48000,0.637916666666667
+"71",2010,"14 Jun 2010 - 20:30","Cape Town Stadium","Cape Town","Group F",62869,"ITA","PAR","Cape Town Stadium",55000,1
+"72",2010,"15 Jun 2010 - 13:30","Royal Bafokeng Sports Palace","Phokeng","Group F",23871,"NZL","SVK","Royal Bafokeng Sports Palace",44530,0.536065573770492
+"73",2010,"15 Jun 2010 - 16:00","Port Elizabeth Stadium","Nelson Mandela Bay/Port Elizabeth","Group G",37034,"CIV","POR","Port Elizabeth Stadium",48459,0.76423368208176
+"74",2010,"15 Jun 2010 - 20:30","Ellis Park Stadium","Johannesburg","Group G",54331,"BRA","PRK","Ellis Park Stadium",62567,0.868365112599294
+"75",2010,"16 Jun 2010 - 13:30","Mbombela Stadium","Nelspruit","Group H",32664,"HON","CHI","Mbombela Stadium",40929,0.798064941728359
+"76",2010,"16 Jun 2010 - 16:00","Durban Stadium","Durban","Group H",62453,"ESP","SUI","Durban Stadium",56000,1
+"77",2010,"16 Jun 2010 - 20:30","Loftus Versfeld Stadium","Tshwane/Pretoria","Group A",42658,"RSA","URU","Loftus Versfeld Stadium",51762,0.824118078899579
+"78",2010,"17 Jun 2010 - 13:30","Soccer City Stadium","Johannesburg","Group B",82174,"ARG","KOR","Soccer City Stadium",94736,0.867399932443844
+"79",2010,"17 Jun 2010 - 16:00","Free State Stadium","Mangaung/Bloemfontein","Group B",31593,"GRE","NGA","Free State Stadium",48000,0.6581875
+"80",2010,"17 Jun 2010 - 20:30","Peter Mokaba Stadium","Polokwane","Group A",35370,"FRA","MEX","Peter Mokaba Stadium",41733,0.847530731076127
+"81",2010,"18 Jun 2010 - 13:30","Port Elizabeth Stadium","Nelson Mandela Bay/Port Elizabeth","Group D",38294,"GER","SRB","Port Elizabeth Stadium",48459,0.790235044057863
+"82",2010,"18 Jun 2010 - 16:00","Ellis Park Stadium","Johannesburg","Group C",45573,"SVN","USA","Ellis Park Stadium",62567,0.72838716895488
+"83",2010,"18 Jun 2010 - 20:30","Cape Town Stadium","Cape Town","Group C",64100,"ENG","ALG","Cape Town Stadium",55000,1
+"84",2010,"19 Jun 2010 - 13:30","Durban Stadium","Durban","Group E",62010,"NED","JPN","Durban Stadium",56000,1
+"85",2010,"19 Jun 2010 - 16:00","Royal Bafokeng Sports Palace","Phokeng","Group D",34812,"GHA","AUS","Royal Bafokeng Sports Palace",44530,0.781765102178307
+"86",2010,"19 Jun 2010 - 20:30","Loftus Versfeld Stadium","Tshwane/Pretoria","Group E",38074,"CMR","DEN","Loftus Versfeld Stadium",51762,0.735558904215448
+"87",2010,"20 Jun 2010 - 13:30","Free State Stadium","Mangaung/Bloemfontein","Group F",26643,"SVK","PAR","Free State Stadium",48000,0.5550625
+"88",2010,"20 Jun 2010 - 16:00","Mbombela Stadium","Nelspruit","Group F",38229,"ITA","NZL","Mbombela Stadium",40929,0.93403210437587
+"89",2010,"20 Jun 2010 - 20:30","Soccer City Stadium","Johannesburg","Group G",84455,"BRA","CIV","Soccer City Stadium",94736,0.891477368687722
+"90",2010,"21 Jun 2010 - 13:30","Cape Town Stadium","Cape Town","Group G",63644,"POR","PRK","Cape Town Stadium",55000,1
+"91",2010,"21 Jun 2010 - 16:00","Port Elizabeth Stadium","Nelson Mandela Bay/Port Elizabeth","Group H",34872,"CHI","SUI","Port Elizabeth Stadium",48459,0.719618646691017
+"92",2010,"21 Jun 2010 - 20:30","Ellis Park Stadium","Johannesburg","Group H",54386,"ESP","HON","Ellis Park Stadium",62567,0.869244170249493
+"93",2010,"22 Jun 2010 - 16:00","Royal Bafokeng Sports Palace","Phokeng","Group A",33425,"MEX","URU","Royal Bafokeng Sports Palace",44530,0.7506175611947
+"94",2010,"22 Jun 2010 - 16:00","Free State Stadium","Mangaung/Bloemfontein","Group A",39415,"FRA","RSA","Free State Stadium",48000,0.821145833333333
+"95",2010,"22 Jun 2010 - 20:30","Durban Stadium","Durban","Group B",61874,"NGA","KOR","Durban Stadium",56000,1
+"96",2010,"22 Jun 2010 - 20:30","Peter Mokaba Stadium","Polokwane","Group B",38891,"GRE","ARG","Peter Mokaba Stadium",41733,0.931900414540052
+"97",2010,"23 Jun 2010 - 16:00","Port Elizabeth Stadium","Nelson Mandela Bay/Port Elizabeth","Group C",36893,"SVN","ENG","Port Elizabeth Stadium",48459,0.761324005860624
+"98",2010,"23 Jun 2010 - 16:00","Loftus Versfeld Stadium","Tshwane/Pretoria","Group C",35827,"USA","ALG","Loftus Versfeld Stadium",51762,0.692148680499208
+"99",2010,"23 Jun 2010 - 20:30","Soccer City Stadium","Johannesburg","Group D",83391,"GHA","GER","Soccer City Stadium",94736,0.880246157743624
+"100",2010,"23 Jun 2010 - 20:30","Mbombela Stadium","Nelspruit","Group D",37836,"AUS","SRB","Mbombela Stadium",40929,0.924430110679469
+"101",2010,"24 Jun 2010 - 16:00","Ellis Park Stadium","Johannesburg","Group F",53412,"SVK","ITA","Ellis Park Stadium",62567,0.853676858407787
+"102",2010,"24 Jun 2010 - 16:00","Peter Mokaba Stadium","Polokwane","Group F",34850,"PAR","NZL","Peter Mokaba Stadium",41733,0.835070567656291
+"103",2010,"24 Jun 2010 - 20:30","Royal Bafokeng Sports Palace","Phokeng","Group E",27967,"DEN","JPN","Royal Bafokeng Sports Palace",44530,0.628048506624747
+"104",2010,"24 Jun 2010 - 20:30","Cape Town Stadium","Cape Town","Group E",63093,"CMR","NED","Cape Town Stadium",55000,1
+"105",2010,"25 Jun 2010 - 16:00","Durban Stadium","Durban","Group G",62712,"POR","BRA","Durban Stadium",56000,1
+"106",2010,"25 Jun 2010 - 16:00","Mbombela Stadium","Nelspruit","Group G",34763,"PRK","CIV","Mbombela Stadium",40929,0.849348872437636
+"107",2010,"25 Jun 2010 - 20:30","Loftus Versfeld Stadium","Tshwane/Pretoria","Group H",41958,"CHI","ESP","Loftus Versfeld Stadium",51762,0.810594644720065
+"108",2010,"25 Jun 2010 - 20:30","Free State Stadium","Mangaung/Bloemfontein","Group H",28042,"SUI","HON","Free State Stadium",48000,0.584208333333333
+"109",2014,"12 Jun 2014 - 17:00","Arena de Sao Paulo","Sao Paulo","Group A",62103,"BRA","CRO","Arena de Sao Paulo",48234,1
+"110",2014,"13 Jun 2014 - 13:00","Estadio das Dunas","Natal","Group A",39216,"MEX","CMR","Estadio das Dunas",31375,1
+"111",2014,"13 Jun 2014 - 16:00","Arena Fonte Nova","Salvador","Group B",48173,"ESP","NED","Arena Fonte Nova",50000,0.96346
+"112",2014,"13 Jun 2014 - 18:00","Arena Pantanal","Cuiaba","Group B",40275,"CHI","AUS","Arena Pantanal",41390,0.973061125875815
+"113",2014,"14 Jun 2014 - 13:00","Estadio Mineirao","Belo Horizonte","Group C",57174,"COL","GRE","Estádio Mineirão",62160,0.919787644787645
+"114",2014,"14 Jun 2014 - 16:00","Estadio Castelao","Fortaleza","Group D",58679,"URU","CRC","Estádio Castelão",63903,0.918251099322411
+"115",2014,"14 Jun 2014 - 18:00","Arena Amazonia","Manaus","Group D",39800,"ENG","ITA","Arena Amazonia",44351,0.897386755653762
+"116",2014,"14 Jun 2014 - 22:00","Arena Pernambuco","Recife","Group C",40267,"CIV","JPN","Arena Pernambuco",46154,0.872448758504138
+"117",2014,"15 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group E",68351,"SUI","ECU","Estádio Nacional",72888,0.937753814070903
+"118",2014,"15 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group E",68351,"SUI","ECU","Estadio Nacional",48745,1
+"119",2014,"15 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group E",68351,"SUI","ECU","Estadio Nacional",35062,1
+"120",2014,"15 Jun 2014 - 16:00","Estadio Beira-Rio","Porto Alegre","Group E",43012,"FRA","HON","Estádio Beira-Rio",51800,0.83034749034749
+"121",2014,"15 Jun 2014 - 19:00","Estadio do Maracana","Rio De Janeiro","Group F",74738,"ARG","BIH","Estadio do Maracana",78838,0.947994621882848
+"122",2014,"16 Jun 2014 - 13:00","Arena Fonte Nova","Salvador","Group G",51081,"GER","POR","Arena Fonte Nova",50000,1
+"123",2014,"16 Jun 2014 - 16:00","Arena da Baixada","Curitiba","Group F",39081,"IRN","NGA","Arena da Baixada",43981,0.888588254018781
+"124",2014,"16 Jun 2014 - 19:00","Estadio das Dunas","Natal","Group G",39760,"GHA","USA","Estadio das Dunas",31375,1
+"125",2014,"17 Jun 2014 - 13:00","Estadio Mineirao","Belo Horizonte","Group H",56800,"BEL","ALG","Estádio Mineirão",62160,0.913770913770914
+"126",2014,"17 Jun 2014 - 16:00","Estadio Castelao","Fortaleza","Group A",60342,"BRA","MEX","Estádio Castelão",63903,0.944274916670579
+"127",2014,"17 Jun 2014 - 18:00","Arena Pantanal","Cuiaba","Group H",37603,"RUS","KOR","Arena Pantanal",41390,0.908504469678666
+"128",2014,"18 Jun 2014 - 13:00","Estadio Beira-Rio","Porto Alegre","Group B",42877,"AUS","NED","Estádio Beira-Rio",51800,0.827741312741313
+"129",2014,"18 Jun 2014 - 16:00","Estadio do Maracana","Rio De Janeiro","Group B",74101,"ESP","CHI","Estadio do Maracana",78838,0.939914761916842
+"130",2014,"18 Jun 2014 - 18:00","Arena Amazonia","Manaus","Group A",39982,"CMR","CRO","Arena Amazonia",44351,0.901490383531375
+"131",2014,"19 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group C",68748,"COL","CIV","Estádio Nacional",72888,0.943200526835693
+"132",2014,"19 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group C",68748,"COL","CIV","Estadio Nacional",48745,1
+"133",2014,"19 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group C",68748,"COL","CIV","Estadio Nacional",35062,1
+"134",2014,"19 Jun 2014 - 16:00","Arena de Sao Paulo","Sao Paulo","Group D",62575,"URU","ENG","Arena de Sao Paulo",48234,1
+"135",2014,"19 Jun 2014 - 19:00","Estadio das Dunas","Natal","Group C",39485,"JPN","GRE","Estadio das Dunas",31375,1
+"136",2014,"20 Jun 2014 - 13:00","Arena Pernambuco","Recife","Group D",40285,"ITA","CRC","Arena Pernambuco",46154,0.872838757204143
+"137",2014,"20 Jun 2014 - 16:00","Arena Fonte Nova","Salvador","Group E",51003,"SUI","FRA","Arena Fonte Nova",50000,1
+"138",2014,"20 Jun 2014 - 19:00","Arena da Baixada","Curitiba","Group E",39224,"HON","ECU","Arena da Baixada",43981,0.891839658034151
+"139",2014,"21 Jun 2014 - 13:00","Estadio Mineirao","Belo Horizonte","Group F",57698,"ARG","IRN","Estádio Mineirão",62160,0.928217503217503
+"140",2014,"21 Jun 2014 - 16:00","Estadio Castelao","Fortaleza","Group G",59621,"GER","GHA","Estádio Castelão",63903,0.932992191289924
+"141",2014,"21 Jun 2014 - 18:00","Arena Pantanal","Cuiaba","Group F",40499,"NGA","BIH","Arena Pantanal",41390,0.978473061125876
+"142",2014,"22 Jun 2014 - 13:00","Estadio do Maracana","Rio De Janeiro","Group H",73819,"BEL","RUS","Estadio do Maracana",78838,0.936337806641467
+"143",2014,"22 Jun 2014 - 16:00","Estadio Beira-Rio","Porto Alegre","Group H",42732,"KOR","ALG","Estádio Beira-Rio",51800,0.824942084942085
+"144",2014,"22 Jun 2014 - 18:00","Arena Amazonia","Manaus","Group G",40123,"USA","POR","Arena Amazonia",44351,0.904669567766229
+"145",2014,"23 Jun 2014 - 13:00","Arena da Baixada","Curitiba","Group B",39375,"AUS","ESP","Arena da Baixada",43981,0.895272958777654
+"146",2014,"23 Jun 2014 - 13:00","Arena de Sao Paulo","Sao Paulo","Group B",62996,"NED","CHI","Arena de Sao Paulo",48234,1
+"147",2014,"23 Jun 2014 - 17:00","Estadio Nacional","Brasilia","Group A",69112,"CMR","BRA","Estádio Nacional",72888,0.948194490176709
+"148",2014,"23 Jun 2014 - 17:00","Estadio Nacional","Brasilia","Group A",69112,"CMR","BRA","Estadio Nacional",48745,1
+"149",2014,"23 Jun 2014 - 17:00","Estadio Nacional","Brasilia","Group A",69112,"CMR","BRA","Estadio Nacional",35062,1
+"150",2014,"23 Jun 2014 - 17:00","Arena Pernambuco","Recife","Group A",41212,"CRO","MEX","Arena Pernambuco",46154,0.892923690254366
+"151",2014,"24 Jun 2014 - 13:00","Estadio das Dunas","Natal","Group D",39706,"ITA","URU","Estadio das Dunas",31375,1
+"152",2014,"24 Jun 2014 - 13:00","Estadio Mineirao","Belo Horizonte","Group D",57823,"CRC","ENG","Estádio Mineirão",62160,0.930228442728443
+"153",2014,"24 Jun 2014 - 16:00","Arena Pantanal","Cuiaba","Group C",40340,"JPN","COL","Arena Pantanal",41390,0.974631553515342
+"154",2014,"24 Jun 2014 - 17:00","Estadio Castelao","Fortaleza","Group C",59095,"GRE","CIV","Estádio Castelão",63903,0.924760965838849
+"155",2014,"25 Jun 2014 - 13:00","Estadio Beira-Rio","Porto Alegre","Group F",43285,"NGA","ARG","Estádio Beira-Rio",51800,0.835617760617761
+"156",2014,"25 Jun 2014 - 13:00","Arena Fonte Nova","Salvador","Group F",48011,"BIH","IRN","Arena Fonte Nova",50000,0.96022
+"157",2014,"25 Jun 2014 - 16:00","Arena Amazonia","Manaus","Group E",40322,"HON","SUI","Arena Amazonia",44351,0.909156501544497
+"158",2014,"25 Jun 2014 - 17:00","Estadio do Maracana","Rio De Janeiro","Group E",73749,"ECU","FRA","Estadio do Maracana",78838,0.935449909941906
+"159",2014,"26 Jun 2014 - 13:00","Arena Pernambuco","Recife","Group G",41876,"USA","GER","Arena Pernambuco",46154,0.907310308965637
+"160",2014,"26 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group G",67540,"POR","GHA","Estádio Nacional",72888,0.926627153989683
+"161",2014,"26 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group G",67540,"POR","GHA","Estadio Nacional",48745,1
+"162",2014,"26 Jun 2014 - 13:00","Estadio Nacional","Brasilia","Group G",67540,"POR","GHA","Estadio Nacional",35062,1
+"163",2014,"26 Jun 2014 - 17:00","Arena de Sao Paulo","Sao Paulo","Group H",61397,"KOR","BEL","Arena de Sao Paulo",48234,1
+"164",2014,"26 Jun 2014 - 17:00","Arena da Baixada","Curitiba","Group H",39311,"ALG","RUS","Arena da Baixada",43981,0.893817784952593

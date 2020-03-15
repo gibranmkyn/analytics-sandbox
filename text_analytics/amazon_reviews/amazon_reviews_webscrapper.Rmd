@@ -1,0 +1,145 @@
+---
+title: "webscrapping_tutorial"
+output: html_document
+---
+
+```{r libraries}
+rm(list = ls()) # cleans the memory
+library(xml2)
+library(rvest)
+library(stringr)
+library(dplyr)
+library(tm)
+library(qdap) # Quantitative Discourse Analysis Package
+library(ggplot2)
+library(tidyr)
+```
+
+
+https://martinctc.github.io/blog/vignette-scraping-amazon-reviews-in-r/
+https://medium.com/analytics-vidhya/customer-review-analytics-using-text-mining-cd1e17d6ee4e
+
+
+```{r functions}
+scrape_amazon <- function(ASIN, page_num){
+  
+  url_reviews <- paste0("https://www.amazon.co.uk/product-reviews/",ASIN,"/?pageNumber=",page_num)
+  
+  doc <- read_html(url_reviews) # Assign results to `doc`
+  
+  # Review Title
+  doc %>% 
+    html_nodes("[class='a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold']") %>%
+    html_text() -> review_title
+  
+  # Review date
+  doc %>% 
+    html_nodes("[data-hook='review-date']") %>%
+    html_text() -> review_date
+  
+  # Review Text
+  doc %>% 
+    html_nodes("[class='a-size-base review-text review-text-content']") %>%
+    html_text() -> review_text
+  
+  # Number of stars in review
+  doc %>%
+    html_nodes("[data-hook='review-star-rating']") %>%
+    html_text() -> review_star
+  
+  # Return a tibble
+  tibble(ASIN = ASIN,
+         review_title,
+         review_date,
+         review_text,
+         review_star,
+         page = page_num) %>% return()
+}
+
+
+clean.corpus <- function(corpus){ 
+  custom.stopwords <- c(stopwords('english'), 'lol', 'smh', 'delta', '\n')
+  corpus <- tm_map(corpus, tolower)
+  corpus <- tm_map(corpus, removeWords, custom.stopwords)
+  corpus <- tm_map(corpus, removePunctuation) 
+  corpus <- tm_map(corpus, stripWhitespace) 
+  corpus <- tm_map(corpus, stemDocument)
+#  corpus <- tm_map(corpus, stemCompletion)
+#  corpus <- tm_map(corpus, removeNumbers) 
+return(corpus)}
+
+```
+
+
+
+
+```{r scrapping}
+
+# _____ automate how many pages to loop based on total number of reviews/10
+# _____ get list of ASIN
+
+ASIN_input <- "0007477155"
+main_df <- data.frame()
+
+# --- Get reviews from multiple page
+for (k in 1:2){
+  local_df <- scrape_amazon(ASIN = ASIN_input, page_num = k)
+  main_df <- dplyr::bind_rows(main_df,local_df)
+}
+
+head(main_df)
+
+trimws(main_df$review_text)
+```
+
+
+```{r Text Extraction}
+# _____ stemming make the words weird e.g. characters = charat, series = seri
+
+
+# Make corpus
+corpus_review <- Corpus(VectorSource(main_df$review_text))
+corpus_review_cleaned <- clean.corpus(corpus_review)
+
+# View corpus
+corpus_review[[1]][1]
+corpus_review_cleaned[[1]][1]
+x <- corpus_review_cleaned[[1]][1]$content
+
+qdap::polarity(x)
+
+
+```
+
+```{r initial plotting}
+# Find the 20 most frequent terms: term_count
+term_count <- freq_terms(corpus_review_cleaned, 20)
+# Plot 20 most frequent terms
+plot(term_count)
+```
+
+```{r tf/idf}
+review_tdm <- TermDocumentMatrix(corpus_review_cleaned)
+
+review_m <- as.matrix(review_tdm) 
+review_term_freq <- rowSums(review_m) # Sum rows and frequency data frame
+review_term_freq <- sort(review_term_freq, decreasing = T) # Sort term_frequency in descending order
+review_term_freq[1:10] # View the top 10 most common words
+
+associations<-findAssocs(review_tdm, 'great', 0.11) 
+associations<-as.data.frame(associations) 
+associations$terms<-row.names(associations) 
+associations$terms<-factor(associations$terms, levels=associations$terms)
+```
+
+
+```{r}
+ggplot(associations, aes(y=terms)) + geom_point(aes(x=great), data=associations, size=5)+ geom_text(aes(x=great, label=great), colour="darkred",hjust=-.25,size=8)+
+theme(text=element_text(size=20), axis.title.y=element_blank())
+```
+
+
+```{r}
+word_network_plot(refund$text[1:3]) title(main='@DeltaAssist Refund Word Network')
+```
+

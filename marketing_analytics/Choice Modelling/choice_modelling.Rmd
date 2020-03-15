@@ -1,0 +1,379 @@
+---
+title: "Choice Modelling for Marketing in R"
+author: "Gibran Makyanie"
+date: "10/02/2020"
+output: html_document
+---
+
+https://www.datacamp.com/courses/marketing-analytics-in-r-choice-modeling
+
+```{r}
+rm(list = ls()) # cleans the memory
+library(tidyverse)
+library(DataExplorer)
+library(mlogit)
+
+```
+
+```{r}
+# ----- import data
+sportscar <- read.csv('sportscar_choice_long.csv')
+sportscar_wide <- read.csv('sportscar_choice_wide.csv')
+chocolate_wide <- read.csv('chocolate_choice_wide.csv')
+chocolate_long <- read.csv('chocolate_choice_long.csv')
+
+# ----- data cleaning
+sportscar$seat <- as.factor(sportscar$seat)
+sportscar$choice_log <- as.logical(sportscar$choice)
+# ----- EDA
+str(sportscar)
+summary(sportscar)
+plot_histogram(sportscar)
+pairs(sportscar, panel=panel.smooth)
+plot_correlation(sportscar)
+```
+
+the number of seats
+the transmission type
+whether it has a convertible roof
+the price in thousands of dollars
+
+## Quickstart Guide
+
+##### What did people choose?
+Before we fit a model, we want to get a sense for what people choose as a function of each product attribute. The best way to do this is to count how many times a car with a particular feature is chosen.
+
+```{r}
+# Create a table of chosen sportscars by transmission type
+chosen_by_trans <- xtabs(choice ~ trans, data = sportscar) # sum up the choice variable for each level of the trans variable.
+
+# Print the chosen_by_trans table to the console
+chosen_by_trans
+
+# Plot the chosen_by_trans object
+barplot(chosen_by_trans)
+```
+
+
+```{r, eval=FALSE}
+# fit a choice model using mlogit() and assign the output to m1
+m1 <- mlogit(choice ~ seat + trans + convert + price, data=sportscar)
+
+summary(sportscar$price)
+
+# summarize the m1 object to see the output of the choice model
+summary(m1)
+```
+
+convertyes is positive, indicating that cars with a convertible roof are more desirable on average than those without. But the coefficient is pretty small at 0.15, so this is a weak preference.
+
+
+```{r, eval=FALSE}
+# inspect products
+products
+
+# use predict_mnl to predict share for products
+shares <- predict_mnl(m1, products)
+
+# print the shares to the console
+shares
+
+# Use barplot to plot predicted market shares
+barplot(shares$share, ylab="Predicted Market Share", 
+        names.arg=c("Our Car", "Comp 1", "Comp 2", "Comp 3"))
+```
+
+You've just computed your first share prediction using a choice model. As you can see from the output, the model predicts that if customers had to choose beween these four cars, only about 10% would choose the first one.
+
+Yikes! Based on that plot, it looks like our competitors will get most of the market share. The good news is that we figured this out before we designed and launched our car.
+
+
+## Managing and Summarizing Choice Data
+
+#### Exploring choice data
+
+```{r}
+nrow(chocolate_wide)
+head(chocolate_wide)
+chocolate_wide %>% filter(Subject == 2408, Trial == 3)
+```
+
+#### Wide to long format
+
+```{r}
+# use reshape() to change the data from wide to long 
+chocolate <- reshape(data= chocolate_wide , direction="long", 
+                     varying = list(Brand=3:5, Price=6:8, Type=9:11), 
+                     v.names=c("Brand", "Price", "Type"), timevar="Alt")
+
+# Create the new order for the chocolate data frame
+new_order <- order(chocolate$Subject, chocolate$Trial, chocolate$Alt)
+
+# Reorder the chocolate data frame to the new_order
+chocolate <- chocolate[new_order,]
+
+# Transform the Selection variable to a logical indicator
+chocolate$Selection <- chocolate$Alt == chocolate$Selection
+
+# Look at the head() of chocolate to see how it has been reordered
+head(chocolate)
+```
+
+
+```{r}
+# Use xtabs to count up how often each Type is chosen
+counts_type <- xtabs(~ Type + Selection, data=chocolate)
+counts_brand<- xtabs(~ Brand + Selection, data=chocolate)
+counts_price <- xtabs(~ Price + Selection, data=chocolate)
+
+# Plot the counts
+plot(counts_type, cex = 1.5)
+plot(counts_brand, cex = 1.5)
+plot(counts_price, cex=1.5)
+```
+> white chocolate was the least popular type of chocolate and Hershey's was the least popular brand. When you look at the plot, you can see there is a bit of a trend toward people choosing lower price chocolates more often. It is hard to see, however, because we have a lot of prices and not much data for each one. This is where a model can help.
+
+```{r}
+# use mlogit.data() to convert chocolate_df to mlogit.data
+chocolate <- mlogit.data(chocolate_long, shape = "long",
+                         choice = "Selection", alt.var = "Alt", 
+                         varying = 6:8)
+                         
+# use str() to confirm that chocolate is an mlogit.data object
+names(chocolate)
+```
+
+
+#### Model fitting
+ready to call mlogit() to fit a model. You might want to type head(chocolate) into the console so that you can look at the data while you fill in the inputs for the mlogit() function. The Selection column in chocolate contains the choice. It can be TRUE/FALSE, 0/1, or no/yes. The attributes are in the Brand, Type, and Price columns.
+```{r}
+# Fit a model with mlogit() and assign it to choc_m
+choc_m <- mlogit(Selection ~ 0 + Brand + Type + Price, data=chocolate, print.level = 3) # 0 removes intercept
+
+# Summarize choc_m with summary()
+summary(choc_m)
+```
+> The parameter multiplying White Chocolate was -1.7, which means people really don't like it. Dove is the zero-level and the parameters for Hershey's and Lindt are negative. That makes the Dove coefficient the highest of these three. Godiva and Ghirardelli have postive parameters and are the most preferred overall.
+
+When we estimate a model with the intercept, it estimates parameters for each of the alternatives. For this conjoint data, the alternative number just indicates which chocolate bar was presented on the left, middle or right in the survey question. It doesn't make much sense to assume that the position would affect the choice.
+
+#### Computing Willingness to pay
+Willingness-to-pay is the value (in currency) that will make one product equally attractive as another product. In other words, it is the amount customers are "willing to pay" for a particular brand or type of chocolate.
+```{r}
+# compute the wtp by dividing the coefficient vector by the negative of the price coefficient
+coef(choc_m)/-coef(choc_m)[9]
+```
+
+> The value of Ghirardelli over Dove is $1.56. That's a strong brand! And the wtp for white chocolate over dark is -$5.53, which means the survey respondents really don't like white chocolate.
+
+#### Model with price as factor
+
+```{r}
+# change the Price variable to a factor in the chocolate data
+chocolate$Price_fact <- as.factor(chocolate$Price)
+
+# fit a model with mlogit and assign it to choc_m3
+choc_m3 <- mlogit(Selection ~ 0 + Brand + Type + Price, data=chocolate)
+
+# inspect the coefficients
+summary(choc_m3)
+```
+
+
+#### Likelihood-ratio test
+
+```{r}
+# likelihood ratio test comparing two models
+lrtest(choc_m2, choc_m3)
+```
+> The p-value is rather large at 0.77. This means that choc_m3 does not fit better than choc_m2. 
+
+#### Model with interaction
+```{r}
+# add the formula for mlogit
+choc_m4 <- mlogit(Selection ~ 0 + Price + Brand*Type, data=chocolate)
+
+# use summary to see the coefficients
+summary(choc_m4)
+```
+> Nice work. Did you see the coefficients for the interaction? There were a lot of them! When you interact two factors, you get a coeficient for each combination
+
+#### Model with price:trial
+```{r}
+# add the formula for mlogit
+choc_m5 <- mlogit(Selection ~ 0 + Brand + Type + Price + Price:Trial, data=chocolate)
+
+# use summary to see the outputs
+summary(choc_m5)
+```
+> The coefficient for Price:Trial is -0.0080398. This means that as respondents answered the survey, they became more price sensitive and were likley to choose cheaper chocolate bars at the end of the survey. But it isn't significant, so we probably shouldn't make too much of it.
+
+
+
+#### Predicting Shares
+```{r, eval=FALSE}
+
+
+#------- The following should predict marketshare, but doesnt work.
+predict_mnl<- function(model, products) {
+  data.model <- model.matrix(update(model$formula, 0 ~ .), data = products)[,-1]
+  utility <- data.model%*%model$coef
+  share <- exp(utility)/sum(exp(utility))
+  cbind(share, products)
+}
+
+m5 <- mlogit(formula = choice ~ 0 + seat + convert + trans + price:segment,     data = sportscar, method = "nr", print.level = 0)
+
+# modify the code below so that the segement is set to "racer" for both alternatives
+price <- c(35, 30)
+seat <- factor(c(2, 2), levels=c(2,4,5))
+trans <- factor(c("manual", "auto"), levels=c("auto", "manual"))
+convert <- factor(c("no", "no"), levels=c("no", "yes"))
+segment <- factor(c("racer", "racer"), levels=c("basic", "fun", "racer"))
+prod <- data.frame(seat, trans, convert, price, segment)
+
+# predict shares for the "racer" segment
+predict_mnl(m5, prod)
+
+```
+
+> That's an important skill! Did you see that the share for the first sports car went from 8.5% for the basic segement to 11.4% for the racer segment? This is because the racer segement is less price sensitive.
+
+
+```{r}
+# fit the choc_m2 model
+choc_m2 <- mlogit(Selection ~ 0 + Brand + Type + Price, data= chocolate)
+
+# create a data frame with the Ghiradelli products
+Brand <- factor(rep("Ghirardelli", 5), level = levels(chocolate$Brand))
+Type <- levels(chocolate$Type)
+Price <- c(rep(3,5))   # treated as a number in choc_m2
+ghir_choc <- data.frame(Brand, Type, Price)
+
+# predict shares
+choco_shares <- predict_mnl(choc_m2, ghir_choc)
+
+
+# make a barplot of the shares
+barplot(choco_shares$share, 
+        horiz = TRUE, col="tomato2",
+        xlab = "Predicted Market Share", 
+        main = "Shares for Ghiradelli chocolate bars at $3 each", 
+        names.arg = levels(chocolate$Type))
+```
+
+## Hierarchical Choice Models
+
+
+Different people have different tastes and preferences. This seems intuitively obvious, but there is also extensive research in marketing showing that this is true. This chapter covers choice models where we assume that different decision makers have different preferences that influence their choices. When our models recognize that different consumers have different preferences, they tend to make larger share predictions for niche products that appeal to a subset of consumers. Hierarchical models are used in most commercial choice modeling applications, so it is important to understand how they work.
+
+```{r}
+
+length(levels(chocolate$Subject)) # know how many people answered the survey. 
+```
+> Only 14 people, not enough for a hierarchical model. But we can still continue. Preferably at least 100.
+
+
+
+```{r}
+# add id.var input to mlogit.data call
+chocolate <- mlogit.data(chocolate, choice = "Selection", shape="long", 
+                         varying=6:8, alt.var = "Alt", id.var = "Subject") # tells which person answer which question
+                         
+# add rpar and panel inputs to mlogit call
+choc_m6 <- mlogit(Selection ~ 0 + Brand + Type + Price, data = chocolate, 
+                  rpar = c(Price = "n"), panel = TRUE) 
+# panel = TRUE input to mlogit() to tell it that you want to assume each Subject has his or her own Price coefficient.
+# rpar = Price = "n" indicate that we want the coefficient for Price to be normally distributed.
+
+# plot the model
+plot(choc_m6)
+```
+> It looks like there is a huge amount of heterogeneity in the price coefficient in this data.
+
+#### Setting effects codes
+
+```{r}
+# set the contrasts for Brand to effects code
+contrasts(chocolate$Brand) <- contr.sum(levels(chocolate$Brand))
+dimnames(contrasts(chocolate$Brand))[[2]] <- levels(chocolate$Brand)[1:4]
+contrasts(chocolate$Brand)
+
+# set the contrasts for Type to effects code
+contrasts(chocolate$Type) <- contr.sum(levels(chocolate$Type))
+dimnames(contrasts(chocolate$Type))[[2]] <- levels(chocolate$Type)[1:4]
+contrasts(chocolate$Type)
+```
+
+
+#### Chocolate model with all coefficients random
+```{r}
+# create my_rpar vector
+choc_m2 <- mlogit(Selection ~ 0 + Brand + Type + Price, data=chocolate)
+my_rpar <- rep("n", length(choc_m2$coef))
+names(my_rpar) <- names(choc_m2$coef)
+my_rpar
+
+# fit model with random coefficients
+choc_m7 <- mlogit(Selection ~ 0 + Brand + Type + Price, data=chocolate, rpar= my_rpar, panel = TRUE )
+
+summary(choc_m7)
+plot(choc_m7)
+```
+> Yes! The sd.BrandGhirardelli parameter is 1.13, which is the largest. People's preference for Ghirardelli varies substantially from person to person.
+
+#### How do people value white chocolate?
+
+
+```{r}
+# print the coefficients 
+choc_m7$coef[5:8]
+# compute the negative sum of those coefficients
+-sum(choc_m7$coef[5:8]) # it is somehow -2.99, it should've been -2.88?
+```
+> Nice! The coefficient is -2.88, which means people really don't like white chocolate.
+
+
+#### Predicting shares for chocolates
+
+```{r, eval=FALSE}
+# ---- missing data: choc_line and choc_line_coded
+
+Brand <- c("Godiva", "Godiva Dark w/", "Hershey's", "Hershey's" )
+Type <- c("Dark", "Nuts", "Milk", "White")
+Price <- c(3,3,1.75,1.75)
+choc_line <- data.frame(Brand, Type, Price)
+
+# Extract the mean parameters and assign to mean
+coef_means <- coef(choc_m8)[1:9]   
+
+# Extract the covariance parameters and assign to Sigma
+Sigma <- cov.mlogit(choc_m8)
+
+# Create storage for individual draws of share
+share <- matrix(NA, nrow=1000, ncol=nrow(choc_line_coded))
+
+# For each draw (person)
+for (i in 1:1000) { 
+  # Draw a coefficient vector from the normal distribution
+  coef <- mvrnorm(1, mu=coef_means, Sigma=Sigma)
+  # Compute utilities for those coef
+  utility <- choc_line_coded %*% coef
+  # Compute probabilites according to logit formuila
+  share[i,] <- exp(utility) / sum(exp(utility))
+}  
+
+# Average the draws of the shares
+cbind(colMeans(share), choc_line)
+
+```
+> Take a close look at the predicted shares. The White bar actually gets pretty good share. While White is disliked on average, some people do like White and the shares from this heterogeneous model reflects that.
+
+
+Advice for building choice models
+1) Start by computing choice counts
+2) Build up from simple models to more complex ones
+3) If estimated parameters have very large SE, probably the model is too complex. Revert to a simpler model.
+4) For models describing human behaviour, heterogeneity is usually a good idea
+
+

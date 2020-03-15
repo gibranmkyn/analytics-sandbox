@@ -1,0 +1,173 @@
+---
+title: "DM_partC"
+author: "Group A-11"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, message=FALSE, eval = FALSE}
+rm(list=ls())
+library(rvest)
+library(httr)
+library(dplyr)
+library(stringr)
+library(tidyverse)
+library(XML)
+```
+
+
+#The following code is intended do download all the required XML files using UK Food Standard Ageny's API. First, we assigned UK Food standard Agency's API url and imported it to R using read_html(). Then, we obtain links which contain the xml file of each city in the UK by specifying the specific html class.Create a vector of URLs for XML files for each city. Finally, We the XML files are saved into a dedicated folder.
+
+```{r download XML, eval = FALSE, message=FALSE}
+
+
+url_path_data<-"https://data.food.gov.uk/catalog/datasets/38dd8d6a-5ab1-4f50-b753-ab33288e3200"
+url_path_source<-read_html(url_path_data)
+
+
+url_path_source%>%
+  html_nodes(".o-dataset-distribution--link" )
+
+# take the link from 'href' in the class
+url_path_source%>%
+  html_nodes(".o-dataset-distribution--link" )%>%
+  html_attr("href")
+
+
+#extract the title
+url_path_source%>%
+  html_nodes(".c-dataset-element--title")%>%
+  html_text()%>%
+  trimws(.)
+
+url_path_source%>%
+  html_nodes(".o-dataset-distribution--link" )%>%
+  html_attr("title")
+
+urls_to_download<-url_path_source%>%
+  html_nodes(".o-dataset-distribution--link" )%>%
+  html_attr("href")
+
+data_titles<-url_path_source%>%
+  html_nodes(".c-dataset-element--title")%>%
+  html_text()%>%
+  trimws(.)
+
+
+# we  create a dataframe to combine the vector
+my_urls_download<-data.frame(
+  title=data_titles,
+  urls=urls_to_download
+)
+
+#change it into character
+my_urls_download$titles<-as.character(my_urls_download$title)
+my_urls_download$urls<-as.character(my_urls_download$urls)
+
+my_urls_download<-my_urls_download[-1,] #remove the first row "!FHRS API Search Page"
+
+
+for (url_index in 1:nrow(my_urls_download)) {
+  url_here<-my_urls_download$urls[url_index]
+  filename_vector<-strsplit(my_urls_download$urls[url_index],split="/")[[1]] #split the link and take the filename
+  filename<-filename_vector[length(filename_vector)]
+  download.file(url=url_here,
+                destfile=paste0("partc_dataset/",filename))
+  }
+
+```
+
+#The following code is meant to transform the XML files into a dataframe that captures the required information. First, an empty dataframe for the final structure called 'partc_df' was created. Next, the paths of the XML files were specified and imported as a list xmlToList() to convert it into a list. Then, XML leaves that contain the required information were specified, in this case, the 'EstablishmentCollection'. Afterwards, the values of the required fields were stored into a local dataframe which will only contain 1 row. Finally, by the end of every iteration the local dataframe is merged into the final dataframe, in other words, compounding the rows into the final dataframe, 'partc_df'.
+
+
+```{r read XML files, eval = FALSE}
+
+# setup empty df for the final solution
+partc_df <- data.frame()
+
+# get xml file paths 
+folder_path <- 'partc_dataset'
+file_path <-list.files(folder_path, pattern = "en-GB.xml")
+xml_file_path <- paste(folder_path, file_path,sep="/")
+
+
+
+for (k in 1:length(xml_file_path)){
+  
+  # Transform the XMLs into lists
+  this_path <-xml_file_path[k]
+  my_list <- XML::xmlToList(this_path)
+  this_establishment_collections <- my_list$EstablishmentCollection
+
+  for(i in 1:length(this_establishment_collections)){
+  
+    # harvest the values for a row
+    this_df <- this_establishment_collections[i]$EstablishmentDetail
+    
+    frsid <- this_df$FHRSID
+    LocalAuthorityBusinessID <- this_df$LocalAuthorityBusinessID
+    BusinessName <- this_df$BusinessName
+    BusinessType <- this_df$BusinessType
+    BusinessTypeID <- this_df$BusinessTypeID
+    AddressLine1 <- this_df$AddressLine1
+    AddressLine2 <- this_df$AddressLine2
+    AddressLine3 <- this_df$AddressLine3
+    AddressLine4 <- this_df$AddressLine4
+    PostCode <- this_df$PostCode
+    RatingValue <- this_df$RatingValue
+    RatingKey <- this_df$RatingKey
+    RatingDate <- this_df$RatingDate
+    LocalAuthorityCode <- this_df$LocalAuthorityCode
+    LocalAuthorityName <- this_df$LocalAuthorityName
+    LocalAuthorityWebSite <- this_df$LocalAuthorityWebSite
+    LocalAuthorityEmailAddress <- this_df$LocalAuthorityEmailAddress
+    Score_Hygiene <- this_df$Scores$Hygiene
+    Score_Structural <- this_df$Scores$Structural
+    Score_ConfidenceInManagement <- this_df$Scores$ConfidenceInManagement
+    SchemeType <- this_df$SchemeType
+    NewRatingPending <- this_df$NewRatingPending
+    Geocode_Longitude <- this_df$Geocode$Longitude
+    Geocode_Latitude <- this_df$Geocode$Latitude
+  
+
+    # create a local dataframe
+    my_local_df <- tibble::tibble(
+      frsid = ifelse(is.null(frsid) == TRUE, 'NULL', frsid),
+      LocalAuthorityBusinessID = ifelse(is.null(LocalAuthorityBusinessID) == TRUE, 'NULL', LocalAuthorityBusinessID),
+      BusinessName = ifelse(is.null(BusinessName) == TRUE, 'NULL', BusinessName),
+      BusinessType = ifelse(is.null(BusinessType) == TRUE, 'NULL', BusinessType),
+      BusinessTypeID = ifelse(is.null(BusinessTypeID) == TRUE, 'NULL', BusinessTypeID),
+      AddressLine1 = ifelse(is.null(AddressLine1) == TRUE, 'NULL', AddressLine1),
+      AddressLine2 = ifelse(is.null(AddressLine2) == TRUE, 'NULL', AddressLine2),
+      AddressLine3 = ifelse(is.null(AddressLine3) == TRUE, 'NULL', AddressLine3),
+      AddressLine4 = ifelse(is.null(AddressLine4) == TRUE, 'NULL', AddressLine4),
+      PostCode = ifelse(is.null(PostCode) == TRUE, 'NULL', PostCode),
+      RatingValue = ifelse(is.null(RatingValue) == TRUE, 'NULL', RatingValue), 
+      RatingKey = ifelse(is.null(RatingKey) == TRUE, 'NULL', RatingKey),
+      RatingDate = ifelse(is.null(RatingDate) == TRUE, 'NULL', RatingDate),
+      LocalAuthorityCode = ifelse(is.null(LocalAuthorityCode) == TRUE, 'NULL', LocalAuthorityCode),
+      LocalAuthorityName = ifelse(is.null(LocalAuthorityName) == TRUE, 'NULL', LocalAuthorityName),
+      LocalAuthorityWebSite = ifelse(is.null(LocalAuthorityWebSite) == TRUE, 'NULL', LocalAuthorityWebSite),
+      LocalAuthorityEmailAddress = ifelse(is.null(LocalAuthorityEmailAddress) == TRUE, 'NULL', LocalAuthorityEmailAddress),
+      Score_Hygiene = ifelse(is.null(Score_Hygiene) == TRUE, 'NULL', Score_Hygiene),
+      Score_Structural = ifelse(is.null(Score_Structural) == TRUE, 'NULL', Score_Structural),
+      Score_ConfidenceInManagement = ifelse(is.null(Score_ConfidenceInManagement) == TRUE, 'NULL', Score_ConfidenceInManagement),
+      SchemeType = ifelse(is.null(SchemeType) == TRUE, 'NULL', SchemeType),
+      NewRatingPending = ifelse(is.null(NewRatingPending) == TRUE, 'NULL', NewRatingPending),
+      Geocode_Longitude = ifelse(is.null(Geocode_Longitude) == TRUE, 'NULL', Geocode_Longitude),
+      Geocode_Latitude = ifelse(is.null(Geocode_Latitude) == TRUE, 'NULL', Geocode_Latitude)
+    )
+  
+  # replace 'NULL' value as NA
+  my_local_df[my_local_df == 'NULL'] <- NA  
+  
+  # merge partc_df with the local dataframe
+  partc_df <- dplyr::bind_rows(partc_df,my_local_df)
+  }
+  
+}
+
+print(nrow(partc_df))
+```
+
