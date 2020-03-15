@@ -23,7 +23,6 @@ library(qdap)
 library(lubridate)
 library(stargazer)
 library(readr)
-x = 1
 ```
 
 
