@@ -30,15 +30,11 @@ Sources:
 https://cran.r-project.org/web/packages/textfeatures/textfeatures.pdf
 https://datascienceplus.com/automated-text-feature-engineering-using-textfeatures-in-r/
 
-```{r}
-t1 <- Sys.time()
-```
-
 
 ```{r}
 
 # ----- Data Importing
-conn <- dbConnect(RSQLite::SQLite(), "inside_airbnb.db") 
+conn <- dbConnect(RSQLite::SQLite(), "dataset/inside_airbnb.db") 
 
 
 # ----- Select listings
@@ -143,40 +139,6 @@ rm(ud_model)
 ```
 
 
-```{r}
-grid.arrange(
-review_annotate %>%
-  filter(upos %in% c('NOUN')) %>%
-  group_by(lemma) %>%
-  summarise(freq = n()) %>%
-  arrange(desc(freq)) %>%
-  head(n =20) %>%
-  mutate(lemma=factor(lemma, levels=lemma)) %>%
-  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
-
-review_annotate %>%
-  filter(upos %in% c('ADJ')) %>%
-  group_by(lemma) %>%
-  summarise(freq = n()) %>%
-  arrange(desc(freq)) %>%
-  head(n =20) %>%
-  mutate(lemma=factor(lemma, levels=lemma)) %>%
-  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
-
-
-review_annotate %>%
-  filter(upos %in% c('ADV')) %>%
-  group_by(lemma) %>%
-  summarise(freq = n()) %>%
-  arrange(desc(freq)) %>%
-  head(n =20) %>%
-  mutate(lemma=factor(lemma, levels=lemma)) %>%
-  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip()
-)
-```
-
-
-
 # Text Feature Extraction for reviews data
 textfeatures function can easily extract generic features (e.g., number of words, line breaks, characters per word, lower case, upper case, commas, periods, exclamation points, etc.) from strings of text with a considerable good speed.
 ```{r}
@@ -207,8 +169,9 @@ hist(review_sample$n_chars, breaks = 200)
 
 # ----- Aggerate reviews per listing
 review_agg <- review_sample %>%
+  mutate(year_month =  format(date,"%Y-%m"), year_month_back = format(date - years(1), "%Y-%m")) %>%
   select(-c(reviewer_id, id)) %>%
-  group_by(listing_id, file_name) %>%
+  group_by(listing_id, file_name, year_month, year_month_back) %>%
   summarise_if(is.numeric, mean, na.rm = TRUE)
 
 
@@ -230,7 +193,6 @@ remove_columns <- c('street', 'neighbourhood', 'neighbourhood_group_cleansed', '
 
 listing_sample <- listing_sample %>%
   select(-remove_columns)
-
 
 
 ```
@@ -266,9 +228,14 @@ rm(ud_model)
 # Feature Extraction from calendar
 ```{r}
 # ----- dataprep calendar
-ams_calendar2020 <- read_csv('amsterdam_012020_calendar.csv.gz') %>% select(listing_id, date, available, price)
-ams_calendar2019 <- read_csv('amsterdam_012019_calendar.csv.gz') %>% select(listing_id, date, available, price)
-ams_calendar2018 <- read_csv('amsterdam_042018_calendar.csv.gz') %>% select(listing_id, date, available, price)
+ams_calendar2020 <- read_csv('temp/amsterdam_012020_calendar.csv.gz') %>% select(listing_id, date, available, price)
+ams_calendar2019 <- read_csv('temp/amsterdam_012019_calendar.csv.gz') %>% select(listing_id, date, available, price)
+ams_calendar2018 <- read_csv('temp/amsterdam_042018_calendar.csv.gz') %>% select(listing_id, date, available, price)
+
+ams_calendar2020 %>%
+  filter(year(date) == 2020)
+
+
 
 combinedCalendar <- rbind(ams_calendar2020, ams_calendar2019, ams_calendar2018) %>% 
   filter(year(date) <= 2019) %>%
@@ -280,22 +247,29 @@ rm(ams_calendar2020)
 rm(ams_calendar2019)
 rm(ams_calendar2018)
 
+library(zoo)
 listings_calendar <- combinedCalendar %>% 
-  group_by(listing_id) %>% 
-  summarise(total_booked = sum(booked, na.rm = TRUE), total_dates = n(), average_price = mean(price, na.rm = TRUE)) %>% 
-  mutate(percent_booked = (total_booked/total_dates)*100)
+ arrange(listing_id, desc(date)) %>%
+ mutate(price_filled = na.locf(price), year_month =  format(date,"%Y-%m")) %>%
+ group_by(listing_id, year_month) %>%
+ summarise(total_booked = sum(booked, na.rm = TRUE), total_dates = n(), average_price = mean(price_filled, na.rm = TRUE)) %>%
+ mutate(percent_booked = (total_booked/total_dates)*100) 
 ```
+```{r}
 
+ggplot(listings_calendar, aes(x = year_month, y = average_price, group = listing_id)) +
+  geom_line()
+```
 
 
 # Final dataframe
 ```{r}
 
 final_df <- listing_sample %>%
-  inner_join(review_agg, by = 'listing_id') %>% # inner join is used to ensure that the selected listings has reviews
+#  inner_join(review_agg, by = 'listing_id') %>% # inner join is used to ensure that the selected listings has reviews
   inner_join(listings_calendar %>% select(listing_id, average_price, percent_booked), by = 'listing_id')
 
-rm(review_agg)
+#rm(review_agg)
 ```
 
 
@@ -349,6 +323,37 @@ ggplot(final_df, aes())
 
 ```
 
+```{r}
+grid.arrange(
+review_annotate %>%
+  filter(upos %in% c('NOUN')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
+
+review_annotate %>%
+  filter(upos %in% c('ADJ')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip(),
+
+
+review_annotate %>%
+  filter(upos %in% c('ADV')) %>%
+  group_by(lemma) %>%
+  summarise(freq = n()) %>%
+  arrange(desc(freq)) %>%
+  head(n =20) %>%
+  mutate(lemma=factor(lemma, levels=lemma)) %>%
+  ggplot(aes(x=lemma, y = freq )) + geom_col() + coord_flip()
+)
+```
 
 
 # Calendar Data
@@ -395,4 +400,97 @@ rm(airbnb_occ_rate)
 
 ```
 
+
+```{r}
+library(superml)
+
+t1 <- Sys.time()
+df <- data.frame(sents = c('i am alone in DARK',
+                           'mother_mary a lot',
+                           'alone in the DARK?',
+                           'many mothers in the lot....'))
+
+df <- data.frame(sents = listing_sample$description)[1:2,]
+
+# initialise vectoriser instance
+tfidf <- TfIdfVectorizer$new(smooth_idf = TRUE, min_df = 0.3, remove_stopwords = TRUE, ngram_range = c(1,3))
+
+
+tf_features <- as.data.frame(tfidf$fit_transform(df))
+
+t2 <- Sys.time()
+
+t2-t1
+```
+
+
+
+```{r}
+library(text2vec)
+
+t1 <- Sys.time()
+df <- listing_sample %>%
+  select(listing_id, description, amenities)
+
+# define preprocessing function and tokenization function
+prep_fun = tolower
+tok_fun = word_tokenizer
+
+it_train = itoken(final_df$amenities, 
+             preprocessor = prep_fun, 
+             tokenizer = tok_fun, 
+             ids = final_df$listing_id, 
+             progressbar = TRUE)
+vocab = create_vocabulary(it_train, stopwords = quanteda::stopwords("en"), ngram = c(1L, 2L))
+
+pruned_vocab = prune_vocabulary(vocab, 
+                                 term_count_min = 10, 
+                                 doc_proportion_max = 0.5,
+                                 doc_proportion_min = 0.001)
+
+vectorizer = vocab_vectorizer(pruned_vocab)
+
+dtm_train  = create_dtm(it_train, vectorizer)
+
+tfidf = TfIdf$new()
+
+dtm_train_tfidf = fit_transform(dtm_train, tfidf)
+summary(dtm_train_tfidf)
+
+x <- as.data.frame(as.matrix(dtm_train_tfidf))
+x$listing_id <- rownames(x)
+
+pred_x <- x %>%
+  inner_join(final_df %>% select(listing_id, average_price), by = 'listing_id')
+
+t2 <- Sys.time()
+t2 - t1
+```
+
+
+```{r}
+
+library(ridge)
+
+
+set.seed(100) # set seed to replicate results
+trainingIndex <- sample(1:nrow(pred_x), 0.8*nrow(pred_x)) # indices for 80% training data
+trainingData <- pred_x[trainingIndex, ] # training data
+testData <- pred_x[-trainingIndex, ] # test data
+
+
+modelx <- linearRidge(log(average_price)~., data = trainingData %>% select(-listing_id))
+modely <- lm(log(average_price)~., data = trainingData %>% select(-listing_id))
+summary(modelx)
+summary(modely)
+predicted <- predict(modelx, testData)  # predict on test data
+compare <- cbind (actual=testData$response, predicted)  # combine
+
+mean (apply(compare, 1, min)/apply(compare, 1, max)) # calculate accuracy
+
+
+hist(trainingData$average_price, breaks = 200)
+
+hist(log(trainingData$average_price), breaks = 200)
+```
 
