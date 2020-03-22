@@ -24,9 +24,11 @@ cdnowElog <- system.file("data/cdnowElog.csv", package = "BTYD")
 dataset <- read.csv(cdnowElog)
 
 dataset <- dataset %>%
-  select(sampleid, date, sales) %>%
-  rename(cust = sampleid) %>%
-  mutate(date = as.Date(as.character(date), format="%Y%m%d"))
+ select(sampleid, date, sales) %>%
+ mutate(date = as.Date(as.character(date), format="%Y%m%d")) %>%
+ mutate(cust = sampleid) %>%
+ select(-sampleid)
+
   
 ```
 
@@ -37,8 +39,6 @@ Transaction-flow models, such as the Pareto/NBD, are concerned with interpurchas
 To validate that the model works, we need to divide the data up into a calibration period and a holdout period. This is relatively simple with either an event log or a customer-by-time matrix, which we are going to create soon. I am going to use 30 September 1997 as the cutoff date, as this point (39 weeks) divides the dataset in half. The reason for doing this split now will become evident when we are building a customer-by-sufficient-statistic matrix from the customer-by-time matrix—it requires a last transaction date, and we want to make sure that last transaction date is the last date in the calibration period and not in the total period.
 # Pareto/NBD
 ```{r}
-
-
 final_df <- dc.MergeTransactionsOnSameDate(dataset) # get sum transactions per customer per day
 summary(final_df)
 
@@ -159,8 +159,32 @@ The first such function is the obvious starting point: a comparison of actual an
 pnbd.PlotFrequencyInCalibration(params, cal.cbs, 7)
 ```
 
-Unfortunately, the only thing we can tell from comparing calibration period frequencies is that the fit between our model and the data isn’t awful. We need to verify that the fit of the model holds into the holdout period. Firstly, however, we are are going to need to get information for holdout period
+Unfortunately, the only thing we can tell from comparing calibration period frequencies is that the fit between our model and the data isn’t awful. We need to verify that the fit of the model holds into the holdout period. Firstly, however, we are are going to need to get information for holdout period.
 
+dc.ElogToCbsCbt produces both a calibration period customer-by-sufficient-statistic matrix and a holdout period customer-by-sufficient-statistic matrix, which could be combined in order to find the number of transactions each customer made in the holdout period. 
+
+However, since we did not use dc.ElogToCbsCbt, I am going to get the information directly from the event log. Note that I subtract the number of repeat transactions in the calibration period from the total number of transactions. We remove the initial transactions first as we are not concerned with them.
+
+```{r}
+elog <- dc.SplitUpElogForRepeatTrans(elog)$repeat.trans.elog; x.star <- rep(0, nrow(cal.cbs))
+cal.cbs <- cbind(cal.cbs, x.star)
+elog.custs <- elog$cust
+
+for (i in 1:nrow(cal.cbs)){ 
+  current.cust <- rownames(cal.cbs)[i]
+  tot.cust.trans <- length(which(elog.custs == current.cust)) 
+  cal.trans <- cal.cbs[i, "x"]
+  cal.cbs[i, "x.star"] <- tot.cust.trans - cal.trans
+}
+
+cal.cbs[1:3,]
+
+
+
+T.star <- 39 # length of the holdout period
+censor <- 7 # This censor serves the same purpose described above x.star <- cal.cbs[,"x.star"]
+comp <- pnbd.PlotFreqVsConditionalExpectedFrequency(params, T.star,cal.cbs, x.star, censor)
+```
 
 
 

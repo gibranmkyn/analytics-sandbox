@@ -8,7 +8,6 @@ output: html_document
 
 ```{r}
 rm(list = ls())
-library(dplyr)
 library(RSQLite)
 library(udpipe)
 library(cld3)
@@ -20,9 +19,11 @@ library(quanteda)
 library(textfeatures)
 library(sentimentr)
 library(qdap)
-library(lubridate)
+library(lubridate)3
 library(stargazer)
 library(readr)
+library(dplyr)
+library(tidyr)
 ```
 
 
@@ -40,7 +41,7 @@ conn <- dbConnect(RSQLite::SQLite(), "dataset/inside_airbnb.db")
 # ----- Select listings
 listing_sample <- dbGetQuery(conn, 'SELECT * FROM listing limit 500') %>%
   mutate(lang = detect_language(description)) %>% 
-  rename(listing_id = id) %>%
+  dplyr::rename(listing_id = id) %>%
   filter(lang == 'en') %>%
   mutate(listing_id = as.character(listing_id)) %>%
   mutate(calendar_last_scraped = as_date(as.integer(calendar_last_scraped))) %>%
@@ -61,6 +62,8 @@ host_sample <- dbGetQuery(conn, paste('SELECT host_id, host_name FROM host WHERE
 listing_distinct <- listing_sample %>%  distinct(listing_id)
 
 review_sample <- dbGetQuery(conn,paste('SELECT * FROM review WHERE listing_id IN', substring(paste(listing_distinct,collapse = ","),2))) %>%
+  dplyr::rename(review_id = id) %>%
+  mutate(review_id = as.character(review_id)) %>%
   mutate(lang = detect_language(comments)) %>%
   mutate(date = as_date(date)) %>%
   mutate(listing_id = as.character(listing_id)) %>%
@@ -97,9 +100,9 @@ rm(reviewsNum)
 
 added_stop_words <- c('amsterdam', 'apartment', 'place', 'house','room', 'stay', 'airbnb','bnb')
 clean_corpus <- function(corpus){
-#  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removePunctuation)
   corpus <- tm_map(corpus, content_transformer(tolower))
-  corpus <- tm_map(corpus, removeWords, words = c(stopwords("en"), added_stop_words ))
+  corpus <- tm_map(corpus, removeWords, words = c(stopwords("en"), added_stop_words))
   corpus <- tm_map(corpus, stripWhitespace)
   corpus <- tm_map(corpus, removeNumbers)
   return(corpus)
@@ -108,9 +111,16 @@ clean_corpus <- function(corpus){
 ```
 
 
-# Annotate Reviews
-```{r}
 
+
+# Text Feature Extraction for reviews data
+
+
+Sentimentr attempts to take into account valence shifters (i.e.,negators, amplifiers (intensifiers), de-amplifiers (downtoners), and adversative conjunctions) while maintaining speed.
+
+
+# # Annotate Reviews
+```{r }
 # ----- Clean comments
 x <- VCorpus(VectorSource(review_sample$comments))
 x <- clean_corpus(x)
@@ -123,23 +133,21 @@ rm(cleaned_comments)
 # ----- tokennise, lemmatise, and POS tag per listing
 ud_model <- udpipe_download_model(language = "english")
 ud_model <- udpipe_load_model(ud_model$file_model)
-review_annotate <- data.frame(udpipe_annotate(ud_model, x = review_sample$cleaned_comments, doc_id = review_sample$id)) 
+review_annotate <- data.frame(udpipe_annotate(ud_model, x = review_sample$cleaned_comments, doc_id = review_sample$review_id)) 
 
 x <- review_annotate %>%
-  rename(id = doc_id) %>%
-  mutate(id = as.integer(id)) %>%
-  group_by(id) %>%
   filter(upos %in% c("ADV","ADJ","NOUN", "AUX", "PART")) %>% # aux and part to capture negations 'did not'
+  dplyr::rename(review_id = doc_id) %>%
+  mutate(review_id = as.character(review_id)) %>%
+  dplyr::group_by(review_id) %>%
   summarise(lemma_reviews = paste(lemma, collapse = " "))
 
 review_sample <- review_sample %>% left_join(x)
-
 rm(x)
 rm(ud_model)
 ```
 
 
-# Text Feature Extraction for reviews data
 textfeatures function can easily extract generic features (e.g., number of words, line breaks, characters per word, lower case, upper case, commas, periods, exclamation points, etc.) from strings of text with a considerable good speed.
 ```{r}
 # ----- Get features from uncleaned comments
@@ -148,7 +156,6 @@ features <- textfeatures(review_sample$comments, normalize = FALSE, word_dims = 
 # ----- Get sentiment from cleaned comments with sentimentr package
 text <- get_sentences(review_sample$lemma_reviews)
 review_sample$sentimentr <- as.data.frame(sentiment_by(text))$ave_sentiment
-
 
 # ----- Whether host name is mentioned in the comments
 review_sample <- review_sample %>%
@@ -166,11 +173,14 @@ hist(review_sample$sent_afinn, breaks = 200)
 hist(review_sample$sent_vader, breaks = 200)
 hist(review_sample$n_polite, breaks = 200)
 hist(review_sample$n_chars, breaks = 200)
+```
 
-# ----- Aggerate reviews per listing
-review_agg <- review_sample %>%
+
+```{r}
+# ----- Features from review
+review_features <- review_sample %>%
   mutate(year_month =  format(date,"%Y-%m"), year_month_back = format(date - years(1), "%Y-%m")) %>%
-  select(-c(reviewer_id, id)) %>%
+  select(-c(reviewer_id, host_name)) %>%
   group_by(listing_id, file_name, year_month, year_month_back) %>%
   summarise_if(is.numeric, mean, na.rm = TRUE)
 
@@ -180,10 +190,6 @@ rm(features)
 ```
 
 
-Sentimentr attempts to take into account valence shifters (i.e.,
-negators, amplifiers (intensifiers), de-amplifiers (downtoners), and
-adversative conjunctions) while maintaining speed
-
 https://cran.r-project.org/web/packages/sentimentr/readme/README.html
 
 
@@ -191,35 +197,72 @@ https://cran.r-project.org/web/packages/sentimentr/readme/README.html
 ```{r}
 remove_columns <- c('street', 'neighbourhood', 'neighbourhood_group_cleansed', 'market', 'latitude','longitude', 'is_location_exact', 'square_feet', 'license', 'calculated_host_listings_count_entire_homes', 'calculated_host_listings_count_private_rooms', 'calculated_host_listings_count_shared_rooms','reviews_per_month', 'last_searched', 'region_id', 'region_name', 'region_parent_id', 'region_parent_name', 'region_parent_parent_id', 'region_parent_parent_name', 'price', 'weekly_price', 'monthly_price', 'minimum_nights', 'maximum_nights', 'minimum_minimum_nights', 'maximum_minimum_nights', 'minimum_maximum_nights', 'maximum_maximum_nights', 'has_availability')
 
-listing_sample <- listing_sample %>%
-  select(-remove_columns)
+listing <- listing_sample %>%
+  select(-remove_columns) %>%
+  unite(col=new_description,c(summary,description,neighborhood_overview, amenities),sep = " ", na.rm=TRUE)
 
 
+# ----- Clean Listing Description
+x <- VCorpus(VectorSource(listing$new_description))
+x <- clean_corpus(x)
+cleaned_description <- as.data.frame(x) # qdap's function to convert corpus to df
+listing$cleaned_description <- cleaned_description$text
+
+rm(x)
+rm(cleaned_description)
+
+
+  
 ```
 
+
+
+
 ```{r}
-# ----- Clean comments
-listing_sample$amenities
+library(text2vec)
 
-rm(x)
-rm(cleaned_text_listings)
+t1 <- Sys.time()
 
-# ----- tokennise, lemmatise, and POS tag per listing
-ud_model <- udpipe_download_model(language = "english")
-ud_model <- udpipe_load_model(ud_model$file_model)
-listings_annotate <- data.frame(udpipe_annotate(ud_model, x = listing_sample$amenities, doc_id = listing_sample$listing_id))
+# define preprocessing function and tokenization function
+prep_fun <- tolower
+tok_fun <- word_tokenizer
+term_min <- round(length(listing$cleaned_description)*0.05)
 
-x <- review_annotate %>%
-  rename(id = doc_id) %>%
-  mutate(id = as.integer(id)) %>%
-  group_by(id) %>%
-  filter(upos %in% c("ADV","ADJ","NOUN", "AUX", "PART")) %>% # aux and part to capture negations 'did not'
-  summarise(lemma_reviews = paste(lemma, collapse = " "))
+it_train <- itoken(listing$cleaned_description, 
+             preprocessor = prep_fun, 
+             tokenizer = tok_fun, 
+             ids = listing$listing_id, 
+             progressbar = TRUE)
+vocab <- create_vocabulary(it_train, ngram = c(1L, 2L))
 
-review_sample <- review_sample %>% left_join(x)
 
-rm(x)
-rm(ud_model)
+
+pruned_vocab <- prune_vocabulary(vocab, 
+                                 term_count_min = term_min, 
+                                 doc_proportion_max = 0.5,
+                                 doc_proportion_min = 0.001)
+
+vectorizer <- vocab_vectorizer(pruned_vocab)
+
+dtm_train  <- create_dtm(it_train, vectorizer)
+
+tfidf <- TfIdf$new()
+
+dtm_train_tfidf <- fit_transform(dtm_train, tfidf)
+summary(dtm_train_tfidf)
+
+x <- as.data.frame(as.matrix(dtm_train_tfidf))
+colnames(x) <- paste0(colnames(x), ("_word__"))
+x$listing_id <- rownames(x)
+
+listing_features <- listing %>%
+  inner_join(x, by = 'listing_id')
+
+
+
+
+t2 <- Sys.time()
+t2 - t1
 ```
 
 
@@ -236,7 +279,6 @@ ams_calendar2020 %>%
   filter(year(date) == 2020)
 
 
-
 combinedCalendar <- rbind(ams_calendar2020, ams_calendar2019, ams_calendar2018) %>% 
   filter(year(date) <= 2019) %>%
   mutate(booked = ifelse(available==FALSE, 1, 0)) %>%
@@ -248,31 +290,89 @@ rm(ams_calendar2019)
 rm(ams_calendar2018)
 
 library(zoo)
-listings_calendar <- combinedCalendar %>% 
+
+calendar_features <- combinedCalendar %>% 
  arrange(listing_id, desc(date)) %>%
  mutate(price_filled = na.locf(price), year_month =  format(date,"%Y-%m")) %>%
  group_by(listing_id, year_month) %>%
  summarise(total_booked = sum(booked, na.rm = TRUE), total_dates = n(), average_price = mean(price_filled, na.rm = TRUE)) %>%
- mutate(percent_booked = (total_booked/total_dates)*100) 
-```
-```{r}
+ mutate(percent_booked = (total_booked/total_dates)*100) %>%
+ select(-c(total_booked, total_dates))
 
-ggplot(listings_calendar, aes(x = year_month, y = average_price, group = listing_id)) +
-  geom_line()
 ```
 
 
 # Final dataframe
 ```{r}
 
-final_df <- listing_sample %>%
-#  inner_join(review_agg, by = 'listing_id') %>% # inner join is used to ensure that the selected listings has reviews
-  inner_join(listings_calendar %>% select(listing_id, average_price, percent_booked), by = 'listing_id')
+final_df <- calendar_features %>%
+  inner_join(listing_features, by = 'listing_id') %>%
+  inner_join(review_features, by = 'listing_id')
 
-#rm(review_agg)
+```
+
+# Sentiment Model
+```{r}
+# Bing Liu
+model1 <- lm(log(average_price)~lag(sentimentr), 
+             data=final_df)
+
+# NRC affection 
+model2 <- lm(log(average_price)~lag(sent_afinn), 
+             data=final_df)
+#Afinn 
+model3 <- lm(log(average_price)~lag(sent_syuzhet), 
+             data=final_df)
+
+model4 <- lm(log(average_price)~lag(sent_vader), 
+             data=final_df)
+
+stargazer::stargazer(model1,model2,model3,model4,type = "text")
 ```
 
 
+
+# Model Unstructured + Structured Data
+
+```{r}
+
+# ----- Data Prep for the plot
+data_with_tfidfmatrix <- select_if(listing_features,is.numeric) %>% 
+  inner_join(calendar_features, by = 'listing_id') %>%
+  ungroup() %>%
+  select(-c(listing_id, host_id))
+
+data_without_tfidfmatrix <- select_if(listing,is.numeric) %>% 
+  inner_join(calendar_features, by = 'listing_id') %>% 
+  ungroup() %>%
+  select(-c(listing_id, host_id))
+
+# ----- Building the models
+modelx <- lm(log(average_price)~., data = data_with_tfidfmatrix)
+
+modely <- lm(log(average_price)~., data = data_without_tfidfmatrix)
+
+# ----- Plot the most significant variables
+head(as.data.frame(summary(modelx)$coefficients) %>%
+  tibble::rownames_to_column() %>%
+  mutate(`absolute t value` = abs(`t value`)) %>%
+  arrange(`Pr(>|t|)`) , 30) %>%
+  mutate(rowname=factor(rowname, levels=rowname)) %>%
+  ggplot(aes(x = rowname, y = `absolute t value`)) + geom_col() + coord_flip()
+
+
+head(as.data.frame(summary(modely)$coefficients) %>%
+  tibble::rownames_to_column() %>%
+  mutate(`absolute t value` = abs(`t value`)) %>%
+  arrange(`Pr(>|t|)`) , 30) %>%
+  mutate(rowname=factor(rowname, levels=rowname)) %>%
+  ggplot(aes(x = rowname, y = `absolute t value`)) + geom_col() + theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+print(paste(deparse(substitute(modelx)), 'Adjusted R-squared', summary(modelx)$adj.r.squared))
+print(paste(deparse(substitute(modely)), 'Adjusted R-squared', summary(modely)$adj.r.squared))
+
+
+```
 
 
 
@@ -401,96 +501,5 @@ rm(airbnb_occ_rate)
 ```
 
 
-```{r}
-library(superml)
 
-t1 <- Sys.time()
-df <- data.frame(sents = c('i am alone in DARK',
-                           'mother_mary a lot',
-                           'alone in the DARK?',
-                           'many mothers in the lot....'))
-
-df <- data.frame(sents = listing_sample$description)[1:2,]
-
-# initialise vectoriser instance
-tfidf <- TfIdfVectorizer$new(smooth_idf = TRUE, min_df = 0.3, remove_stopwords = TRUE, ngram_range = c(1,3))
-
-
-tf_features <- as.data.frame(tfidf$fit_transform(df))
-
-t2 <- Sys.time()
-
-t2-t1
-```
-
-
-
-```{r}
-library(text2vec)
-
-t1 <- Sys.time()
-df <- listing_sample %>%
-  select(listing_id, description, amenities)
-
-# define preprocessing function and tokenization function
-prep_fun = tolower
-tok_fun = word_tokenizer
-
-it_train = itoken(final_df$amenities, 
-             preprocessor = prep_fun, 
-             tokenizer = tok_fun, 
-             ids = final_df$listing_id, 
-             progressbar = TRUE)
-vocab = create_vocabulary(it_train, stopwords = quanteda::stopwords("en"), ngram = c(1L, 2L))
-
-pruned_vocab = prune_vocabulary(vocab, 
-                                 term_count_min = 10, 
-                                 doc_proportion_max = 0.5,
-                                 doc_proportion_min = 0.001)
-
-vectorizer = vocab_vectorizer(pruned_vocab)
-
-dtm_train  = create_dtm(it_train, vectorizer)
-
-tfidf = TfIdf$new()
-
-dtm_train_tfidf = fit_transform(dtm_train, tfidf)
-summary(dtm_train_tfidf)
-
-x <- as.data.frame(as.matrix(dtm_train_tfidf))
-x$listing_id <- rownames(x)
-
-pred_x <- x %>%
-  inner_join(final_df %>% select(listing_id, average_price), by = 'listing_id')
-
-t2 <- Sys.time()
-t2 - t1
-```
-
-
-```{r}
-
-library(ridge)
-
-
-set.seed(100) # set seed to replicate results
-trainingIndex <- sample(1:nrow(pred_x), 0.8*nrow(pred_x)) # indices for 80% training data
-trainingData <- pred_x[trainingIndex, ] # training data
-testData <- pred_x[-trainingIndex, ] # test data
-
-
-modelx <- linearRidge(log(average_price)~., data = trainingData %>% select(-listing_id))
-modely <- lm(log(average_price)~., data = trainingData %>% select(-listing_id))
-summary(modelx)
-summary(modely)
-predicted <- predict(modelx, testData)  # predict on test data
-compare <- cbind (actual=testData$response, predicted)  # combine
-
-mean (apply(compare, 1, min)/apply(compare, 1, max)) # calculate accuracy
-
-
-hist(trainingData$average_price, breaks = 200)
-
-hist(log(trainingData$average_price), breaks = 200)
-```
 
