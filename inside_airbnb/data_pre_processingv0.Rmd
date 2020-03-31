@@ -1,0 +1,135 @@
+---
+title: "data_pre_processing"
+author: "Gibran Makyanie"
+date: "22/03/2020"
+output: html_document
+---
+
+```{r}
+rm(list = ls()) # cleans the memory
+library(xml2)
+library(rvest)
+library(dplyr)
+library(qdap) # Quantitative Discourse Analysis Package
+library(ggplot2)
+library(RCurl) # download files
+library(readr) # read from zip
+library(stringr)
+library(RSQLite)
+# library(plyr)
+library(cld3) # language detector
+library(tidyselect)
+library(lubridate)
+```
+
+
+```{r}
+# ----- don't mind this delete late. Just to update 0 to 1 again for testing
+
+# Updates Listing
+dbExecute(conn, 'UPDATE listing SET pre_processed = 0 WHERE listing_id IN 
+                    (SELECT listing_id FROM listing
+                    WHERE pre_processed = 1
+                     ORDER BY listing_id)')
+
+# Updates Reviews
+dbExecute(conn, 'UPDATE review SET pre_processed = 0 WHERE review_id IN 
+                    (SELECT review_id FROM review
+                    WHERE pre_processed = 1
+                     ORDER BY review_id)')
+
+```
+
+
+```{r}
+conn <- dbConnect(RSQLite::SQLite(), "dataset/inside_airbnb.db") # connect to SQLite db, in this case, it created a new db
+```
+
+
+
+# Pre-process Listing Data
+```{r}
+
+# ----- Initialise While Loop
+query <- dbGetQuery(conn, 'SELECT count(listing_id) FROM listing 
+                    WHERE pre_processed = 0 AND 
+                    file_name IN ("Amsterdam_listings.csv.gz","Melbourne_listings.csv.gz", "New York City_listings.csv.gz")') # calculate how many unprossed rows
+
+i = 0
+
+# ----- Loop until all listing data are processed
+while (query > 0) {
+  
+  df <- dbGetQuery(conn, 'SELECT * FROM listing 
+                   WHERE pre_processed = 0 AND 
+                   file_name IN ("Amsterdam_listings.csv.gz","Melbourne_listings.csv.gz", "New York City_listings.csv.gz") 
+                   ORDER BY listing_id 
+                   LIMIT 50000')  
+  
+            
+  
+  # -------------------------------------------- INSERT DATA PRE-PROCESSING CODE HERE ------
+  
+  
+  
+  # ----- Prepare for the next loop
+  dbExecute(conn, 'UPDATE listing SET pre_processed = 1 WHERE listing_id IN 
+                      (SELECT listing_id FROM listing
+                      WHERE pre_processed = 0
+                       ORDER BY listing_id
+                      LIMIT 50000)') # updates already processed rows as 1
+  
+  
+  i = i+1    # count iterations
+  print(paste('Listing data chunk',i,'processed')) 
+
+  query <- dbGetQuery(conn, 'SELECT count(listing_id) FROM listing WHERE pre_processed = 0') # recalculate how many unprocessed rows left
+}
+```
+
+
+# Pre-process Reviews Data
+
+```{r}
+
+# ----- Initialise While Loop
+query <- dbGetQuery(conn, 'SELECT count(review_id) FROM review 
+                    WHERE pre_processed = 0 AND 
+                    file_name IN ("Amsterdam_reviews.csv.gz","Melbourne_reviews.csv.gz", "New York City_reviews.csv.gz")')
+
+i = 0
+
+# ----- Loop until all reviews data in are processed
+while (query > 0) {
+  
+  df <- dbGetQuery(conn, 'SELECT * FROM review 
+                   WHERE pre_processed = 0 AND 
+                   file_name IN ("Amsterdam_reviews.csv.gz","Melbourne_reviews.csv.gz", "New York City_reviews.csv.gz") 
+                   ORDER BY review_id 
+                   limit 200')  
+  
+            
+  
+  # -------------------------------------------- INSERT DATA PRE-PROCESSING CODE HERE ------
+  
+  
+  
+  # ----- Prepare for the next loop
+  dbExecute(conn, 'UPDATE review SET pre_processed = 1 WHERE review_id IN 
+                      (SELECT review_id FROM review
+                      WHERE pre_processed = 0
+                       ORDER BY review_id
+                      LIMIT 200)') # updates already processed rows as 1
+  
+  i = i+1 # count iterations
+  print(paste('Review data chunk',i,'processed'))
+  
+  query <- dbGetQuery(conn, 'SELECT count(review_id) FROM review WHERE pre_processed = 0') # recalculate how many unprocessed rows left
+}
+```
+
+
+
+```{r}
+dbDisconnect(conn)
+```
