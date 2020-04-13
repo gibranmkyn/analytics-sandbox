@@ -1,0 +1,279 @@
+---
+title: "Lab 5: Sentiment and Affection - Application to 10-K"
+output: html_notebook
+---
+
+
+
+```{r setup}
+rm(list=ls())
+library(dplyr)
+# Download Forms 10-K/10Q from SEC
+library(edgar)
+# For sentiment datasets
+library(sentimentr)
+library(tidytext)
+library(rvest)
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+```
+
+```{r sentimentjoy}
+sentimentr::course_evaluations %>% 
+  # Convert to data frame
+  data.frame() %>% 
+  mutate(evaid = row_number()) %>% 
+  select(-sentiment) -> course_evaluations
+
+course_evaluations%>% 
+  unnest_tokens(word,text) %>% 
+  anti_join(stop_words) %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  filter(!(sentiment %in% c("positive","negative"))) %>% 
+  group_by(sentiment) %>% 
+  summarise(total=n()) %>% 
+  ggplot(.,aes(x=reorder(sentiment,-total),y=total,fill=sentiment))+geom_bar(stat = "identity") + xlab("Affective States")
+
+```
+
+```{r contrast_sentiment_polarity}
+# Now we want to calculate the total 
+# number of matched words for normalizing the 
+# document term matrix
+word_counts <- course_evaluations%>% 
+  unnest_tokens(word,text) %>% 
+  anti_join(stop_words) %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  group_by(evaid) %>% 
+  summarise(total_words =n())
+
+
+course_evaluations %>% 
+  unnest_tokens(word,text) %>% 
+  anti_join(stop_words) %>% 
+  inner_join(get_sentiments("nrc")) %>% 
+  # left_join(word_counts) %>% 
+  group_by(evaid,sentiment) %>% 
+  summarise(total_sentiment = n()) %>% 
+  left_join(word_counts) %>% 
+  mutate(total_sentiment=total_sentiment/total_words) -> course_eval_sentiment
+
+
+  course_eval_sentiment %>% 
+    acast(evaid~sentiment,
+          value.var = "total_sentiment",fill=0) %>%
+    as.data.frame() -> sent_transform
+    
+# Lets plot them to see 
+# how do they look 
+
+library(FactoMineR)
+FactoMineR::CA(sent_transform)
+  
+```
+
+
+
+
+```{r wordcloud}
+
+sentimentr::course_evaluations %>% 
+  as.data.frame() %>% 
+  mutate(evaid = row_number()) %>% 
+  select(-sentiment) %>% 
+  unnest_tokens(word,text) %>% 
+  anti_join(stop_words) %>% 
+  inner_join(get_sentiments("nrc")) %>% 
+  filter(!(sentiment %in% c("positive","negative",
+                            "suprise"))) %>%
+  count(word,sentiment,sort=TRUE) %>% 
+  reshape2::acast(word~sentiment,value.var = "n",fill=0) %>% 
+  wordcloud::comparison.cloud(max.words=15)
+
+
+```
+
+Now lets compare the accuracy of the dictionaries 
+
+```{r dictionariesdemo}
+library(SentimentAnalysis)
+library(qdap)
+sentimenth <- analyzeSentiment(sentimentr::course_evaluations$text[1:10])
+
+convertToBinaryResponse(sentimenth)$SentimentGI
+
+
+sentimenth$SentimentQDAP
+convertToDirection(sentimenth$SentimentQDAP)
+responseh <- sentimentr::course_evaluations$sentiment[1:10]
+
+responcetest <- compareToResponse(sentimenth,responseh) 
+knitr::kable(responetest)
+```
+
+```{r plotfit}
+# Lets plot the fit of each dictionary
+responcetest %>%
+  as.data.frame() %>%
+  # What we are doing here is to create a new column called
+  # stat and pass it the value of the rownames
+  tibble::rownames_to_column("stat") %>% 
+  filter(stat=="r.squared") %>% 
+  gather() %>%
+  # This is to make sure tha the value we are ploting is numeric
+  mutate(value = as.numeric(value))%>% 
+  na.omit() %>%
+  ggplot(aes(x=reorder(key,value),y=100*value,fill=key))+geom_bar(stat="identity")+coord_flip()+ylab("Polarity Type")+xlab("Percent of Variance")
+```
+
+```{r helpfulness}
+# lets do a case study on a review helpfulness dataset from the book
+download_helpful_reviews <-download.file("https://github.com/kwartler/text_mining/blob/master/one_two_star_reviews.xlsx?raw=true",destfile = "reviews.xlsx",mode = "wb")
+# Note here that I added the "wb" argument on the download.file 
+# in order to make sure that the file will be downloaded as 
+# a binary file (xlsx) and not as a text-based format. 
+# Very often we have errors in data transfer which can make 
+# the file not readable.
+```
+
+
+```{r importreviews}
+
+# Using the readxl package I am importing the reviews
+helpful_reviews <- readxl::read_excel("reviews.xlsx")
+
+# Now we use again the analyzeSentiment function from
+# the sentiment analysis package 
+sentimenth <- SentimentAnalysis::analyzeSentiment(helpful_reviews$Text)
+
+# Compare it again to response.
+this_response <- compareToResponse(sentimenth,helpful_reviews$HelpfulnessDenominator) 
+
+knitr::kable(this_response)
+
+```
+
+
+
+
+# Material for the individual assignment
+
+
+```{r getindex}
+# With the edgar package its very easy to download the forms
+# With this command bellow we can downlaod the master index 
+# with all the links to crawl and fetch the reports submitted 
+# in 2019
+
+edgar::getMasterIndex(2019)
+```
+
+
+```{r edgarcheck}
+# If we want a particular report 
+# for a particular year for a particular company 
+# we can call the following. 
+# Observe the changes in your local folder
+edgar::getFilingsHTML(cik.no = 789019,form.type = "10-K",filing.year = 2019)
+
+```
+
+```{r edgar2}
+# With this one we can also get a busines description
+# first argument is the CIK code and second argument 
+# is the year.
+edgar::getBusinDescr(789019,filing.year = 2019)
+```
+
+
+```{r sentimenth}
+# the edgar package comes handy with its own sentiment 
+# functionality which utilizes the loughran-mcdonald 
+# dictionary
+
+tesla_sentiment <- edgar::getSentiment(1318605,filing.year =2019,form.type = "10-K")
+
+tesla_sentiment
+```
+
+
+
+```{r edgar22}
+# Lets do an exercise and fetch all the quarterly earnings reports 
+# and compute the sentiment for tesla between 2015 and 2019
+datf_tesla <- tibble()
+for(i in 2015:2019){
+  this_year <- edgar::getSentiment(1318605,filing.year =i,form.type = "10-Q")  
+  datf_tesla <- rbind(datf_tesla,this_year)
+}
+
+```
+
+```{r plotposneg}
+# Lets plot it
+datf_tesla %>% select(date.filed,lm.dictionary.count,
+                      lm.positive.count,lm.negative.count) %>% 
+                mutate(positives = lm.positive.count / lm.dictionary.count,
+                      negatives = lm.negative.count / lm.dictionary.count) %>% ggplot(aes(x=date.filed,y=negatives))+
+  geom_line(color="red")+geom_point()
+
+
+```
+
+
+```{r parts}
+#We can also extract particular parts of the report 
+#and store them for further analysis - 
+#This one gets the management discussion part only
+edgar::getMgmtDisc(1318605,2019)
+
+```
+
+```{r seesentimentperquarter}
+# Now lets take the last 5 years for 
+# MSFT and download the reports
+
+for(i in 2014:2019){
+edgar::getFilingsHTML(cik.no = 101829,form.type = "10-Q",filing.year = i)
+}
+
+# To do for exercise: replicate the code provided for tesla and make 
+# the same plot for the microsoft case
+
+
+```
+
+```{r edgargotodir}
+# Now we go for an alternative sentiment 
+# scoring using the analyzeSentiment 
+# function from QDAP rather than the 
+# internal function from the sentiment package. 
+# this allows us to use several different dictionaries.
+
+# Note the trick on the list files to use the 
+# full.names = T option (Nobody did it in the 
+# group assignment in Data Management....)
+filesh <- list.files("Edgar filings_HTML view/Form 10-Q/101829/",full.names = T)
+
+all_sentiment <- tibble()
+for(i in 1:length(filesh)){
+  this_file <- read_html(filesh[i]) %>% 
+    html_text()
+  this_sentiment <- analyzeSentiment(this_file)
+  all_sentiment <- bind_rows(all_sentiment,
+                             this_sentiment)
+  print(i)
+}
+
+```
+
+```{r plotallsentiment}
+#Lets plot them and compare how do they look
+#QDAP sentiment vs LM sentiment
+all_sentiment %>%
+  mutate(index = row_number()) %>%
+  ggplot(aes(x=index, y=SentimentQDAP))+geom_line(colour="blue")+
+  geom_line(aes(y=SentimentLM,colour="red"))+geom_point()
+```
+

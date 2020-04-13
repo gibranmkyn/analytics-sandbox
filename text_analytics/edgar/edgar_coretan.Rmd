@@ -1,0 +1,86 @@
+---
+title: "edgar_coretan"
+author: "Gibran Makyanie"
+date: "06/04/2020"
+output: html_document
+---
+
+# 10Q
+
+```{r}
+CleanFiling2 <- function(text) {
+      text <- gsub("[[:digit:]]+", "", text)  ## remove Alphnumerics
+      text <- gsub("\\s{1,}", " ", text)
+      text <- gsub('\"',"", text)
+      #text <- RemoveStopWordsFilings(text)
+      return(text)
+}
+
+cleanFun <- function(htmlString) {
+  return(gsub("<.*?>", "", htmlString))
+}
+
+new.dir <- paste0("MD&A section text")
+    dir.create(new.dir)
+```
+
+https://github.com/cran/edgar/blob/master/R/getMgmtDisc.R
+```{r}
+filing.text <- readLines('Edgar filings_HTML view/Form 10-Q/6201/6201_10-Q_2015-04-24_0001193125-15-145178.html')
+
+filing.text <- readLines('Edgar filings_full text/Form 10-Q/6201/6201_10-Q_2015-04-24_0001193125-15-145178.txt')
+
+       
+
+        # Take data from first <DOCUMENT> to </DOCUMENT>
+        doc.start.line <- (grep("<DOCUMENT>", filing.text, ignore.case = TRUE)[1])
+        doc.end.line   <- (grep("</DOCUMENT>", filing.text, ignore.case = TRUE)[1])
+        
+        if( (!is.na(doc.start.line)) & (!is.na(doc.end.line)) ){
+          filing.text <- filing.text[doc.start.line : doc.end.line]
+        }
+  
+  
+        f.text <- filing.text
+        
+         # Preprocessing the filing text
+        f.text <- gsub("\\n|\\t|$", " ", f.text)
+        f.text <- gsub("^\\s{1,}", "", f.text)
+        f.text <- gsub(" s ", " ", f.text)
+        f.text <- gsub("<.*?>", "", f.text)
+        
+        # Check for empty Lines and delete it
+        empty.lnumbers <- grep("^\\s*$", f.text)
+        
+        if (length(empty.lnumbers) > 0) {
+            f.text <- f.text[-empty.lnumbers]  ## Remove all lines only with space
+        }
+        
+        # Get MD&A sections
+        startline <- grep("Item\\s{0,}2[^A]", f.text, ignore.case = TRUE)
+        endline <- grep("Item\\s{0,}3", f.text, ignore.case = TRUE)
+        
+        md.dicusssion <- NA
+        
+        if (length(startline) != 0 && length(endline) != 0) {
+            
+            startline <- startline[length(startline)]
+            endline <- endline[length(endline)] - 1
+            
+            md.dicusssion <- paste(f.text[startline:endline], collapse = " ")
+            md.dicusssion <- gsub("\\s{2,}", " ", md.dicusssion)
+            
+            #md.dicusssion <- gsub(" co\\.| inc\\.| ltd\\.| llc\\.| comp\\.", " ", md.dicusssion, ignore.case = T)
+            
+            #md.dicusssion2 <- unlist(strsplit(md.dicusssion, "\\. "))
+            #md.dicusssion2 <- paste0(md.dicusssion2, ".")
+            md.dicusssion <- CleanFiling2(md.dicusssion)
+            #header <- paste0("CIK: ", cik, "\n", "Company Name: ", cname, "\n", 
+            #                 "Form Type : ", f.type, "\n", "Filing Date: ", date.filed, "\n",
+            #                 "Accession Number: ", accession.number)  
+            # md.dicusssion <- paste0(header, "\n\n\n", md.dicusssion)
+            
+        }
+        
+
+```
