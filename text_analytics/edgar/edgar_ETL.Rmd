@@ -8,7 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 rm(list = ls())
 knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
-
 library(tidyverse)
 library(edgar)
 library(XML)
@@ -20,43 +19,51 @@ library(udpipe)
 library(rvest)
 ```
 
+# DATA PREPARATION - Stage 1: ETL Process with initial cleaning
 
-## Downloader
-
+## Downlading Financial Reports
 ```{r}
-# With the edgar package its very easy to download the forms
-# With this command bellow we can downlaod the master index 
-# with all the links to crawl and fetch the reports submitted 
-# in 2019
+# ----- The S&P 500
+sp500 <- read_csv('sp500.csv')
+
+# ----- Download MDA chapter 10-K and HTML of 10-Q
+edgar::getMgmtDisc(cik.no = sp500$CIK, filing.year = c(2009:2019))
+edgar::getFilingsHTML(cik.no = sp500$CIK, form.type = '10-Q', filing.year = c(2009:2019))
+
+# ----- Initiate SQLite database
+conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
+dbWriteTable(conn,"sp500", sp500) # create sp500 table for information about S&P500
+rm(sp500)
 ```
 
-## MASTER INDEX
+
+## Master Index
 ```{r}
-conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
+# ----- Insert Master Indexes to db
+master_index_list <-list.files('Master Indexes')
+for(i in 1:length(master_index_list)) {
 
-maseter_index_list <-list.files('Master Indexes')
-sp500 <- read_csv('sp500.csv')
-for(i in 1:length(maseter_index_list)) {
-
-load(paste0('Master Indexes/',maseter_index_list[i]))
+  load(paste0('Master Indexes/',master_index_list[i]))
   
-local_df <- year.master %>%
-  filter(cik %in% sp500$CIK, form.type %in% c('10-Q', '10-K')) %>%
-  mutate(date.filed = as.Date(date.filed)) %>%
-  mutate(year_filed = year(date.filed)) %>%
-  mutate(accession.number = gsub(".*/", "", edgar.link)) %>%
-  mutate(accession.number = gsub('.txt','',accession.number)) %>%
-  select(-edgar.link)
-
-colnames(local_df) <- gsub("\\.", "_", colnames(local_df)) # column names with dots (.) will confuse SQL
+  local_df <- year.master %>%
+    filter(cik %in% sp500$CIK, form.type %in% c('10-Q', '10-K')) %>%
+    mutate(date.filed = as.Date(date.filed)) %>%
+    mutate(year_filed = year(date.filed)) %>%
+    mutate(accession.number = gsub(".*/", "", edgar.link)) %>%
+    mutate(accession.number = gsub('.txt','',accession.number)) %>%
+    select(-edgar.link)
+  
+  colnames(local_df) <- gsub("\\.", "_", colnames(local_df)) # column names with dots (.) will confuse SQL
 
   dbWriteTable(conn,"master_index", local_df, append = TRUE) # create master_index Table
 }
 
-dbWriteTable(conn,"sp500", sp500) # create sp500 table for information about S&P500
-rm(local_df, year.master, sp500)
+rm(local_df, year.master)
+```
 
 
+```{r}
+# ----- Check Records
 dbGetQuery(conn, 'SELECT count(cik) from master_index') # 20678
 dbGetQuery(conn, 'SELECT count(cik) from sp500') # 505
 
@@ -64,9 +71,9 @@ dbDisconnect(conn)
 ```
 
 
-## MD&A chapter 10k reports
+## ETL Initiation
 ```{r}
-# ----- get stopwords
+# ----- Stopwords by Loughran McDonald
 stopw_loughran_mcdonald <- c()
 stopw_dictionaries <-list.files('stopw_loughran_mcdonald')
 
@@ -77,8 +84,11 @@ for (i in 1:length(stopw_dictionaries)) {
     stopw_loughran_mcdonald <- c(stopw_loughran_mcdonald, local_list)
 }
 
-stopw_custom <- c('vs', 'financial', 'statement', 'exhibit','report','figure','fig','tab','table', 'mda', 'company', 'footnote', 'item', 'part')
+# ----- Add customised stopwords
+stopw_custom <- c('vs', 'financial', 'statement', 'exhibit','report','figure','fig','tab','table', 'mda', 'company', 'footnote', 'page')
 
+
+# ----- Finalising Stopwords
 stopw_final <- c(stopw_loughran_mcdonald, stopw_custom)
 rm(stopw_loughran_mcdonald, stopw_custom, stopw_dictionaries, file_path, local_list)
 
@@ -87,6 +97,8 @@ ud_model <- udpipe_download_model(language = "english", overwrite = F)
 ud_model <- udpipe_load_model(ud_model$file_model)
 ```
 
+
+## ETL MD&A chapter 10k reports
 ```{r}
 conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
 
@@ -176,18 +188,12 @@ for(i in 1:length(file_path)) {
 rm(file_path)
 ```
 
+
+## ETL 10Q Reports
 ```{r}
-dbGetQuery(conn, 'SELECT * FROM cleaned_10k_mda')
-dbExecute(conn, 'DELETE FROM cleaned_10k_mda')
-```
 
-
-## HTML 10-Q slices 
-
-```{r}
-t1<- Sys.time()
 the_index <- dbGetQuery(conn, 'SELECT cik, accession_number FROM master_index WHERE form_type = "10-Q" ')
-
+z = 0
 split_the_index <- split(the_index, with(the_index, interaction(cik)), drop = TRUE)
 rm(the_index)
 
@@ -210,26 +216,14 @@ rm(file_pattern, listed_files)
   
   doc_begin <- regmatches(doc,gregexpr("(?<=notes to).*",doc,perl=TRUE))[[1]] # regex to slice document from chapter notes on financial statements
   if(length(doc_begin) > 0) {doc_begin <- doc_begin} else {doc_begin <- regmatches(doc,gregexpr("(?<=notes).*",doc,perl=TRUE))[[1]]} 
-  
+  if(length(doc_begin) > 0) {doc_begin <- doc_begin} else {doc_begin <- regmatches(doc,gregexpr("(?<=part).*",doc,perl=TRUE))[[1]]} 
   doc <- regmatches(doc_begin,gregexpr(".*(?<=item exhibits)",doc,perl=TRUE))[[1]][1] # regex to slice document until chapter "exhibits"  
   rm(doc_begin)
-  
-  cleanedDoc <- gsub("<.*?>", "", doc)
-  cleanedDoc <- gsub("&nbsp;"," ", cleanedDoc)
-  cleanedDoc <- gsub(" {2,}", "", cleanedDoc)
-  cleanedDoc <- gsub("^\\s+|\\s+$", "", cleanedDoc)
-  cleanedDoc <- gsub("\\d+", "", cleanedDoc)
-  cleanedDoc <- gsub("&#;", "", cleanedDoc)
-  cleanedDoc <- gsub("[^[:alnum:][:blank:]+?&/\\-]", "", cleanedDoc)
-  cleanedDoc <- cleanedDoc[cleanedDoc != ""]
-  cleanedDoc <- cleanedDoc[cleanedDoc != " "]
-  cleanedDoc <- cleanedDoc[cleanedDoc != ",,"]
-  cleanedDoc <- cleanedDoc[cleanedDoc != ","]
   
   sub_this <- c("table of contents",
                 "page",
                 "item",
-                "part"
+                "part",
                 "financial information",
                 "financial statements",
                 "summary of significant accounting policies",
@@ -252,10 +246,10 @@ rm(file_pattern, listed_files)
                 "management discussion and analysis of financial condition and results of operations",
                 "managements discussion and analysis of financial condition and results of operations",
                 "exhibits") #company_name
-  cleanedDoc <- gsub(paste0(sub_this, collapse = '|'),"", cleanedDoc)
+  doc <- gsub(paste0(sub_this, collapse = '|')," ", doc)
   
-  text_transformed <- tibble(accession_number = accession_number[i], cleaned = cleanedDoc)
-  
+  text_transformed <- tibble(accession_number = accession_number[i], cleaned = doc)
+  rm(doc)
   
   # ----- Tokenisation and Part-of-speech Tagging
     tokenised <- text_transformed %>%
@@ -303,36 +297,145 @@ rm(file_pattern, listed_files)
       
   rm(annotated_nouns, annotated_full, local_df, temp_report)
   }
-}
-t2 <- Sys.time()
-t2-t1
+z = z + 1
+print(paste(z, "out of 499"))
 
+}
+
+```
+
+
+# DATA Preparation - Stage 2: Cleaning
+
+
+## TF-IDF Stopwords Identification
+```{r}
+
+# ----- Sample on S&P Market 2011 and 2017
+conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
+sample_reports <- dbGetQuery(conn, 'SELECT cik, cleaned_noun FROM master_index WHERE year_filed IN (2011, 2017)')
+
+# ----- Calculate TF-IDF
+tf_idf_samples <- sample_reports %>%
+  unnest_tokens(word, cleaned_noun) %>% 
+  count(cik, word, sort = TRUE) %>% 
+  ungroup() %>%
+  bind_tf_idf(word, cik, n)
+
+rm(sample_reports)
+
+summarised_tf_idf <- tf_idf_samples %>%
+  group_by(word) %>%
+  summarise(avg_tf_idf = mean(tf_idf)) %>%
+  arrange(desc(avg_tf_idf))
+
+rm(tf_idf_samples)
+
+# ----- Plotting TF-IDF Distribution
+ggplot(summarised_tf_idf, aes(x=avg_tf_idf)) + 
+  geom_histogram(color="black", fill="black", bins = 200) + 
+  scale_y_log10() +
+  labs(title = "TF-IDF Distribution on log-scale")
+
+
+# ----- Adding buttom 10% words with the lowest TF-IDF as Stopwords
+top_90_percent <- summarised_tf_idf %>%
+  top_frac(0.90) %>%
+  arrange(desc(avg_tf_idf))
+
+buttom_10_percent <- summarised_tf_idf %>%
+  anti_join(top_90_percent) %>%
+  arrange(desc(avg_tf_idf))
+
+stopw_tfidf <- buttom_10_percent$word
+stopw_final <- c(stopw_final, stopw_tfidf)
+
+rm(stopw_tfidf, summarised_tf_idf, top_90_percent, buttom_10_percent)
 ```
 
 ```{r}
-x <- dbGetQuery(conn, 'SELECT cik, count(*) FROM cleaned_10q LEFT JOIN master_index ON cleaned_10q.accession_number = master_index.accession_number GROUP BY cik')
-x$cik
-
-dbGetQuery(conn, 'SELECT * FROM master_index')
-
-
-dbGetQuery(conn, 'SELECT * FROM cleaned_10q LEFT JOIN master_index ON cleaned_10q.accession_number = master_index.accession_number WHERE cik ="1359841"')
-
-dbExecute(conn, 'DELETE FROM cleaned_10q WHERE accession_number = "0000018230-09-000175"')
+dbExecute(conn, 'ALTER TABLE master_index ADD COLUMN cleaned_text TEXT;') # add cleaned_text to master_index
+dbExecute(conn, 'ALTER TABLE master_index ADD COLUMN cleaned_noun TEXT;') # add clean noun column to master_index
+```
 
 
-the_index <- dbGetQuery(conn, paste('SELECT cik, accession_number FROM master_index WHERE form_type = "10-Q" AND cik NOT IN(', paste(x$cik, collapse = ","), ')'))
-unique(the_index$cik) #19
+## Final Cleaning
+
+```{r}
+# ------ 10-K MDA Text Cleaning
+conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
 
 
+market_level <- dbGetQuery(conn, 'SELECT company_name, master_index.accession_number, cleaned_10k_mda.cleaned_text, cleaned_10k_mda.cleaned_noun
+           FROM master_index INNER JOIN cleaned_10k_mda ON master_index.accession_number = cleaned_10k_mda.accession_number ')
 
-dbGetQuery(conn, 'SELECT * FROM')
+for(i in 1:nrow(market_level)){
+  tryCatch({
+    x <- market_level[i,]
+    name <- strsplit(tolower(x[1]), " ")[[1]] # identify name of the company
+    
+    cleaned_noun <- x %>%
+      unnest_tokens(word, cleaned_noun) %>%
+      filter(!word %in% name) %>% # remove company name
+      filter(!word %in% stopw_final) %>% # remove stopwords
+      summarise(cleaned_noun = paste(word, collapse = " ")) # combine tokens to store
+    
+    cleaned_text <- x %>%
+      unnest_tokens(word, cleaned_text) %>%
+      filter(!word %in% name) %>%
+      filter(!word %in% stopw_final) %>%
+      summarise(cleaned_text = paste(word, collapse = " "))
+    
+    accession_number <- x$accession_number[1]
+    
+    
+    dbExecute(conn, paste0("UPDATE master_index SET cleaned_text = '",cleaned_text ,"', cleaned_noun = '",cleaned_noun ,"' WHERE accession_number = '",accession_number ,"'"))
+    rm(x, name, cleaned_noun, cleaned_text, accession_number)
+    
+    print(paste(i, "of", nrow(market_level), "10K MDA"))
+    
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
+```
+
+
+```{r}
+# ----- 10-Q Text Cleaning
+market_level <- dbGetQuery(conn, 'SELECT company_name, master_index.accession_number, cleaned_10q.cleaned_text, cleaned_10q.cleaned_noun
+           FROM master_index INNER JOIN cleaned_10q ON master_index.accession_number = cleaned_10q.accession_number ')
+
+for(i in 1:nrow(market_level)){
+  tryCatch({
+  x <- market_level[i,]
+  name <- strsplit(tolower(x[1]), " ")[[1]]
+  
+  cleaned_noun <- x %>%
+    unnest_tokens(word, cleaned_noun) %>%
+    filter(!word %in% name) %>%
+    filter(!word %in% stopw_final) %>%
+    summarise(cleaned_noun = paste(word, collapse = " "))
+  
+  cleaned_text <- x %>%
+    unnest_tokens(word, cleaned_text) %>%
+    filter(!word %in% name) %>%
+    filter(!word %in% stopw_final) %>%
+    summarise(cleaned_text = paste(word, collapse = " "))
+  
+  accession_number <- x$accession_number[1]
+  
+  
+  dbExecute(conn, paste0("UPDATE master_index SET cleaned_text = '",cleaned_text ,"', cleaned_noun = '",cleaned_noun ,"' WHERE accession_number = '",accession_number ,"'"))
+  rm(x, name, cleaned_noun, cleaned_text, accession_number)
+  
+  print(paste(i, "of", nrow(market_level), "10Q reports"))
+  
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+}
 
 ```
 
 
-NEXT STEPS.......
-1) Tokenise and remove items item and such!!!!!!!!!!!!!!
-1) check why "1013871" "72903"  not there
-2) check how many have empty text and why
+
+
+
 

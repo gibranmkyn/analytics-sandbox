@@ -14,5 +14,3 @@ sp500 <- read_csv('sp500.csv')
 df_10q <- getFilingsHTML(cik.no = sp500$CIK, form.type = '10-Q', filing.year = c(2009:2019))
 save(df_10q, file = 'df_10q.rda')
 
-
-conn <- dbConnect(RSQLite::SQLite(), "edgar.db")

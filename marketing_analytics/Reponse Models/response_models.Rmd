@@ -1,0 +1,404 @@
+---
+title: "Response Models"
+author: "Gibran Makyanie"
+date: "27/04/2020"
+output: html_document
+---
+
+Market Response Models
+- Adjust product prices
+- Optimise marketing tactics
+- Test effectiveness of marketing plans
+
+```{r}
+load(sales.data.RData)
+```
+
+```{r}
+
+str(sales.data) # Structure of sales.data
+tail(sales.data) # Tail of sales.data
+mean(sales.data$SALES) # Mean SALES
+min(sales.data$SALES) # Minimum SALES
+max(sales.data$SALES) # Maximum SALES
+```
+
+# Response models for aggregate data
+
+## Linear Model
+```{r}
+linear.model <- lm(SALES ~ PRICE, data = sales.data) # Explain SALES by PRICE
+coef(linear.model) # Obtain the model coefficients
+
+# Calculate the volume sales for the unit price of 1.05 
+coef(linear.model)[1] + 1.05 * coef(linear.model)[2]
+
+# Calculate the volume sales for the unit price of 0.95 
+coef(linear.model)[1] + 0.95 * coef(linear.model)[2]
+```
+
+For every unit decrease in price, the sales increase around 134.
+
+
+
+```{r}
+# Plot SALES against PRICE
+plot(SALES ~ PRICE, data = sales.data)
+
+# Explain SALES by PRICE
+linear.model <- lm(SALES ~ PRICE, data = sales.data)
+
+# Add the model predictions
+abline(linear.model)
+```
+
+The abline() function adds a straight line specified in log-sales intercept/ price slope form when applied to the log.model object .
+
+## Non-linear model
+Exponential function that assumes a constant % change (growth rate). 
+Sales = B0 + exp(B1 * Price) -----> Linear equivalent ----> log (B0) + (B1*Price)
+
+
+```{r}
+
+plot(log(SALES) ~ PRICE, data = sales.data) # Plot log(SALES) against PRICE
+
+log.model <- lm(log(SALES) ~ PRICE, data = sales.data) # Explain log(SALES) by PRICE
+
+coef(log.model) # Obtain the model coefficients
+
+abline(log.model) # Add the model predictions
+
+```
+
+Price coeff = -0.66 interpreted as if price increases 1 unit, sales decreases 66%
+The log-transformation improved the model's predictive performance by reducing the distance between the line and the observations
+
+
+# Extended sales-response modeling
+Aims to learn how to incorporate the effects of advertising and promotion in your sales-response model and how to identify the marketing strategy that is most likely to succeed.
+
+
+Selling craft beer is highly competitive. Increasing in-store visibility usually generates additional sales. Therefore, the brewery makes use of point-of-sales display ads. 
+
+
+## Model Extensions: Dummy Variables
+```{r}
+
+# ----- Aggregate: splits the data into subsets, computes summary statistics for each, and returns the result in a convenient form.
+aggregate(log(SALES) ~ DISPLAY, FUN = mean, data = sales.data) # Mean log(SALES)
+
+aggregate(log(SALES) ~ DISPLAY, FUN = min, data = sales.data) # Minimum log(SALES)
+
+aggregate(log(SALES) ~ DISPLAY, FUN = max, data = sales.data) # Maximum log(SALES)
+```
+Great! On average the log-sales are a little higher for weeks Hoppiness was on display. But the maximum log-sales are lower!
+
+
+```{r}
+
+dummy.model <- lm(log(SALES)~DISPLAY, data = sales.data) # Explain log(SALES) by DISPLAY
+coef(dummy.model)
+```
+
+The difference implies that a change from 0 (no-Display) to 1 (Display) leads to an increase of approximately 46 percent in log-sales. 
+
+```{r}
+
+aggregate(log(SALES) ~ DISPLAY + COUPON + DISPLAYCOUPON, FUN = mean, data = sales.data) # Mean log(SALES)
+
+
+dummy.model <- lm(log(SALES) ~ DISPLAY + COUPON + DISPLAYCOUPON, data = sales.data)
+coef(dummy.model)
+
+update(dummy.model, . ~ . + PRICE) # Update the model for PRICE
+```
+The sizes of the slope coefficients indicate that couponing sets a greater incentive to purchase than displaying, and that running display and coupon activities at the same time accelerates our log-sales. And Price is not that much of 0.312
+
+
+## Model Extensions: Dynamic Variables
+Most marketing activities has a carry-over effect. It should be evaluated by back shifting (lags).
+
+Lagging a variable means shifting the time base back by a given number of observations. This can be done by using the function lag(). The lag() function takes only one argument; n = 1, by default for defining the number of periods to be shifted.
+
+
+```{r}
+head(cbind(sales.data$PRICE, lag(sales.data$PRICE))) # Compare lagged PRICE to original PRICE
+
+
+
+Price.lag <- lag(sales.data$PRICE) # Take the lag of PRICE
+
+lag.model <- lm(log(SALES) ~ PRICE + Price.lag, data = sales.data)
+coef(lag.model)
+
+Coupon.lag <- lag(sales.data$COUPON) # Add coupon
+update(lag.model, . ~ . + COUPON + Coupon.lag)
+```
+Coefficients:
+(Intercept)        PRICE    Price.lag       COUPON   Coupon.lag  
+      3.833       -4.505        4.843        1.354       -0.384
+   
+The effect of changes in price on log-sales is negative in the first period but positive in the second. 
+
+But once the model is updated Looks like couponing has more of an immediate effect on log-sales as in absolute values the coefficient for COUPON is much higher.
+
+
+```{r}
+
+extended.model <- lm(log(SALES) ~ PRICE + Price.lag + DISPLAY + Display.lag + COUPON + Coupon.lag + DISPLAYCOUPON + DisplayCoupon.lag, data = sales.data)
+summary(extended.model) # R-squared = 0.71
+
+predicted.values <- c(NA,fitted.values(extended.model)) # Obtain the model predictions
+
+
+plot(log(SALES) ~ 1, data = sales.data) # Plot log(SALES) against the running index
+lines(predicted.values ~ 1) # Add the model predictions to the plot
+```
+
+This time, to check your model, you display the relation between log(SALES) and the running index by using plot(). Likewise, you add the model predictions to the graph by using lines(). The lines() function joins the predicted data points and the running index using line segments.
+
+## Dropping Predictors, model improvement
+
+```{r}
+library(MASS)
+# Obtain the AIC
+AIC(extended.model)
+
+# Update the AIC by single term deletion
+AIC(update(extended.model, . ~ . -Coupon.lag))
+
+# ----- Or using backward elimination
+
+final.model <- stepAIC(extended.model, direction = "backward", trace = FALSE) # Backward elemination
+summary(final.model)
+```
+Awesome! The AIC value for the updated model decreases only from 189.21 to 189.13. REMOVE!!!
+
+# Response models for individual-level data
+Aims to learn how to explain the effects of temporary price changes on customer brand choice by employing logistic and probit response models.
+
+Data required:
+- Observation week
+- HousholdID of the purchase record
+- Lastpurchase
+
+Predicting response variable {purchase = 1, otherwise = 0}
+Linear probability model: P(Purchase = 1) = f(advertising, promotion)
+
+Next question, whether customer purchases depends on changes in our PRICE relative to competitor's PRICE. 
+------> Price Ratio : log(our_price / competitor_price)
+Negative value indicates our price is lower than competitor
+
+
+```{r}
+load('choice.data.RData')
+str(choice.data) # 2789 obs
+
+
+colMeans(choice.data[c("HOPPINESS","BUD","PRICE.HOP","PRICE.BUD")]) # Get the mean of HOPPINESS, BUD, PRICE.HOP and PRICE.BUD
+```
+Obviously Hoppiness is only purchased in 10% of the observations. Overall, the price for Hoppiness is a little bit lower than for Bud.
+
+```{r}
+price.ratio <- log(choice.data$PRICE.HOP/choice.data$PRICE.BUD) # Calculate the price ratio of PRICE.HOP to PRICE.BUD
+head(cbind(price.ratio, choice.data$PRICE.BUD, choice.data$PRICE.HOP)) # Compare price.ratio to PRICE.HOP and PRICE.BUD
+```
+
+ If the price ratio is negative, the price for Hoppiness is lower than the price for Bud. The lower the price for Hoppiness compared to Bud the more negative becomes the price ratio. If the prices for Hoppiness and Bud are equal, the price ratio is 0.
+
+
+```{r}
+
+probability.model <- lm(HOPPINESS ~ price.ratio, data = choice.data) # Explain HOPPINESS by price.ratio
+plot(HOPPINESS ~ price.ratio, data = choice.data) # Plot HOPPINESS against price.ratio
+abline(probability.model) # Add the model predictions
+```
+
+The purchase probability for Hoppiness increases when the price ratio decreases. Makes sense but the graph does not look optimal, right? Can we really have a probability lower than 0 when the price ratio is positive? SHOULD BE IN LOGISTIC NOT LINEAR.
+
+
+## Logistic Regression
+
+Average marginal effect can use margins(logistic.model)
+
+```{r}
+
+logistic.model <- glm(HOPPINESS ~ price.ratio, family = binomial, data = choice.data)
+coef(logistic.model) # Obtain the coefficients
+```
+ coef(logistic.model)
+(Intercept) price.ratio 
+  -3.572678   -6.738768
+
+The more negative the price ratio, meaning the lower the price for Hoppiness relative to the price for Bud, the higher the purchases probability for Hoppiness. 
+
+```{r}
+
+plot(HOPPINESS ~ price.ratio, data = choice.data) # Plot HOPPINESS against price.ratio
+
+curve(predict(logistic.model, data.frame(price.ratio = x), type = "response"), add = TRUE) # Add the logistic response function
+```
+
+You can add the logistic function to the plot by using curve(). The curve() function is used to evaluate another function at x data points. 
+The model predictions of the logistic model are now bounded between 0 and 1
+
+
+
+## Average marginal Effect
+
+The logistic response function is essentially nonlinear. Therefore, it is not immediately clear what is the effect of a unit change in the price ratio on the probability that a customer purchases Hoppiness. A solution is to interpret the effect of a unit change averaged over all customers. This average marginal effect can be derived by using the function margins(). The function is loaded from the add-on package margins
+
+```{r}
+library(margins)
+
+
+coef(probability.model) # Linear probability model
+margins(logistic.model) # Logistic model
+```
+coef(probability.model)
+(Intercept) price.ratio 
+ 0.09700236 -0.29594939
+ 
+margins(logistic.model)
+Average marginal effects
+glm(formula = HOPPINESS ~ price.ratio, family = binomial, data = choice.data)
+ price.ratio
+     -0.4585
+     
+Now the price ratio effect of the logistic model is similar in size to the price ratio coefficient of the linear probability model. On average, the purchase probability for Hoppiness increases around 46%, if the price ratio decreases one unit. This is much more than obtained for the linear probability model. 
+
+```{r}
+# ----- Effect Plot
+x <- seq(from = -2, to = 2, by = 0.5)
+cplot(logistic.model, "price.ratio", xvals = x) # Plot the price.ratio effect
+```
+
+The resulting conditional effect plot reflects the predicted purchase probabilities for Hoppiness that take on the values in x for a unit change in price.ratio. The curve is steeper in the middle section, indicating that a unit change in the price ratio has a larger effect for values between -1 and -0.5
+
+
+## Probit Response function
+Similar to logistic but different.
+
+In other way, logistic has slightly flatter tails. i.e the probit curve approaches the axes more quickly than the logit curve.
+
+Logit has easier interpretation than probit. Logistic regression can be interpreted as modelling log odds (i.e those who smoke >25 cigarettes a day are 6 times more likely to die before 65 years of age). Usually people start the modelling with logit. You could use the likelihood value of each model to decide for logit vs probit.
+
+Both can be used for modeling the relationship between one or more numerical or categorical predictor variables and a categorical outcome.
+
+    Coefficients for probit models can be interpreted as the difference in Z score associated with each one-unit difference in the predictor variable.
+    
+```{r}
+# ----- Probit Model
+probit.model <- glm(HOPPINESS ~ price.ratio, family = binomial(link = probit), data = choice.data)
+coef(probit.model)
+
+cbind(coef(probit.model), coef(logistic.model)) # Compare the coefficients
+```
+When the price for Hoppiness decreases relative to the price of Bud, purchases for Hoppiness increase.
+The coefficients differ because their scales differ. The coefficients of the logistic model are log-odds and the coefficients of the probit model are z-values.
+
+
+To be able to interpret the price.ratio coefficient of the probit.model you calculate its effect of an average unit change on the latent propensity by using the function margins(). You check if the effect for the probit.model might be different by calling the function margins() again on the logistic.model object.
+
+```{r}
+
+# ----- Compare
+margins(logistic.model)
+margins(probit.model)
+```
+Average marginal effects
+glm(formula = HOPPINESS ~ price.ratio, family = binomial, data = choice.data)
+ price.ratio
+     -0.4585
+
+Average marginal effects
+glm(formula = HOPPINESS ~ price.ratio, family = binomial(link = probit),     data = choice.data)
+ price.ratio
+     -0.4503
+
+On average, the purchase probability for Hoppiness increases around 45%, if the price ratio decreases by one unit.
+
+
+# Extended choice modeling
+The main goal of response modeling is to enable marketers to not only see a payoff for their actions today, but also tomorrow. In order to view this future payoff, a simple but reliable statistical model is required. In this last chapter, you will learn how to evaluate the predictive performance of logistic response models.
+
+
+```{r}
+
+extended.model <- glm(HOPPINESS ~ price.ratio + DISPL.HOP + FEAT.HOP + FEATDISPL.HOP, family = binomial, data = choice.data)
+margins(extended.model)
+
+summary(extended.model) # BUT THERE'S NO R-SQUARED, instead AIC
+```
+ price.ratio DISPL.HOP FEAT.HOP FEATDISPL.HOP
+     -0.4471  0.009486  0.04973        0.1086
+
+The combination of display and feature actions does have the largest effect on the purchase probabilities for hoppiness.
+     
+```{r}
+# Explain HOPPINESS by the intercept only
+null.model <- glm(HOPPINESS ~ 1, family = binomial, data = choice.data)
+anova(extended.model, null.model, test = "Chisq") # Compare null.model and extended.model
+```
+
+Extending the model for additional predictors decreased the deviance from 1820.0 of the intercept only model to 1275.8 of the extended model. This is a decrease of 544.23 and provides a significant increase in model fit. 
+
+```{r}
+final.model <- stepAIC(extended.model, direction = "backward", trace = FALSE) # Backward elemination
+summary(final.model) # Summarize the final.model
+```
+
+## Choice models as classifiers
+
+```{r}
+
+predicted <- ifelse(fitted.values(extended.model) >= 0.5, 1, 0) # Classify the predictions
+table(predicted) # Obtain the number of purchase events
+mean(predicted) # Obtain the relative number of purchase events
+```
+
+Awesome! You classify 95 observations as purchases and 2703 observations as no-purchases. Thus, purchase events occur for only 3% of the predicted values.
+
+```{r}
+
+observed <- choice.data$HOPPINESS # Obtain the observed purchases
+
+table(predicted, observed)/2798 # Cross-tabulate observed vs. predicted purchases
+
+prop.table(table(predicted, observed)) # Cross-tabulate observed vs. predicted purchases
+```
+Your classifier predicts 89% of the cases correctly as no-purchase and 2% correctly as purchase. However, more of the purchase events are falsely classified as non-purchase than correctly as purchase.
+
+```{r}
+library(pROC)
+
+observed <- choice.data$HOPPINESS # Obtain the observed purchases
+ROC <- roc(predictor = fitted(extended.model), response = observed) # Create the Roc object
+plot(ROC) # Plot the ROC curve
+```
+
+
+```{r}
+# ----- Model Validation
+train.data <- subset(choice.data, subset = LASTPURCHASE == 0)
+test.data <- subset(choice.data, subset = LASTPURCHASE == 1)
+
+
+
+train.model <- glm(HOPPINESS ~ price.ratio + FEAT.HOP + FEATDISPL.HOP, family = binomial, data = train.data) # Fit the logistic response model to train.data
+
+# ----- compare, yes they are similar
+margins(train.model)
+margins(extended.model)
+```
+
+```{r}
+probability <- predict(train.model, test.data, type="response")  # Predict the purchase probabilities for test.data
+
+predicted <- ifelse(probability >= 0.5, 1, 0)  # Classify the predictions
+observed <- test.data$HOPPINESS # Obtain the observed purchases from test.data
+prop.table(table(predicted, observed)) # Cross-tabulate observed vs. predicted purchases
+```
+
+Your model correctly classified more than 92% of the cases as no-purchase and around 1% as purchase.

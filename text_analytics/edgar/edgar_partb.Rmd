@@ -1,0 +1,251 @@
+---
+title: "edgar_partb"
+author: "Gibran Makyanie"
+date: "27/04/2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
+
+library(tidyverse)
+library(edgar)
+library(XML)
+library(lubridate)
+library(tm)
+library(RSQLite)
+library(tidytext)
+library(udpipe)
+library(rvest)
+library(readxl)
+library(qdap)
+library(sentimentr)
+library(textfeatures)
+library(BatchGetSymbols)
+library(lubridate)
+```
+
+
+```{r}
+conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
+```
+
+
+```{r}
+# -- Import LM Dictionary
+LM_dictionary_file <- "LoughranMcDonald_SentimentWordLists_2018.xlsx"
+sentiment <- c("negative", "positive", "uncertainty", "litigious", "strong_modal","weak_modal", "constraining")
+      
+LM_dictionary <- data.frame()
+for(s in 1:7) {
+  local_df <- tibble(word = tolower(read_excel(LM_dictionary_file, sheet = s+1)$word), sentiment = sentiment[s] )
+  LM_dictionary <- bind_rows(LM_dictionary, local_df)
+}
+
+rm(local_df)
+
+dummy_LM <- tibble(accession_number = 'dummy', positive = 0, negative = 0, uncertainty = 0, litigious = 0, constraining = 0, strong_modal = 0, weak_modal = 0)
+dummy_nrc <- tibble(accession_number = 'dummy', positive = 0, negative = 0, anger = 0, fear = 0, trust = 0, sadness = 0, surprise = 0, disgust = 0, joy = 0, anticipation = 0)
+dummy_bing <- tibble(accession_number = 'dummy', positive = 0, negative = 0)
+
+```
+
+
+## Calculating Sentiment Measures
+```{r}
+
+cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
+
+
+for (c in 1:length(cik)) {
+  df_cik <- dbGetQuery(conn, paste0('SELECT accession_number, cleaned_text FROM master_index WHERE cik = "',cik[c], '"'))
+  
+  for (r in 1:nrow(df_cik)) {
+    
+  df_report <- dbGetQuery(conn, paste0('SELECT accession_number, cleaned_text FROM master_index WHERE accession_number = "',df_cik[r], '"'))
+  # ----- Sentiment Syuzhet, Vader, and n_words
+  sentiment_syuzhet_vader <- textfeatures(df$cleaned_text, normalize = FALSE, word_dims = FALSE, sentiment = TRUE) %>%
+    select(sent_syuzhet,sent_vader) %>%
+    mutate(accession_number = df$accession_number)
+  
+  # ----- Text Complexity
+  tokenised <- df %>% 
+    unnest_tokens(word, cleaned_text)
+    
+  n_words <- tokenised %>%
+    group_by(accession_number) %>%
+    count(accession_number)
+  
+  n_complex <- tokenised %>%
+    group_by(word, accession_number) %>%
+    mutate(complexity = nchar( gsub( "[^X]", "", gsub( "[aeiouy]+", "X", tolower( word ))))) %>%
+    filter(complexity >=3) %>%
+    group_by(accession_number) %>%
+    count(accession_number)
+  
+  complexity <- tibble(accession_number = n_words$accession_number,
+                       complexity = n_complex$n / n_words$n)
+  
+  rm(n_complex)
+  
+  # ----- Sentiment LoughranMcDonald
+  tokens_LM <- tokenised %>%
+    inner_join(LM_dictionary) 
+  
+  word_count_LM <- tokens_LM %>% group_by(accession_number) %>% summarise(LM_total_words =n())
+  
+  sentiment_LM <- tokens_LM %>% 
+    group_by(accession_number,sentiment) %>% 
+    summarise(total_sentiment = n()) %>% 
+    spread(sentiment, total_sentiment, fill = 0) %>%
+    bind_rows(dummy_LM) %>%
+    left_join(word_count_LM) %>%
+    mutate(LM_sent = positive - negative,
+           LM_positive = positive / LM_total_words,
+           LM_negative = negative / LM_total_words,
+           LM_uncertainty = uncertainty / LM_total_words,
+           LM_litigious = litigious / LM_total_words,
+           LM_constraining = constraining / LM_total_words,
+           LM_strong_modal = strong_modal / LM_total_words,
+           LM_weak_modal = weak_modal / LM_total_words) %>%
+    select(-c(positive, negative, uncertainty, litigious, constraining, strong_modal, weak_modal)) %>%
+    filter(accession_number != 'dummy')
+  
+  rm(tokens_LM, word_count_LM)
+  
+  # ----- Sentimentr
+  text <- get_sentences(df$cleaned_text)
+  sentimentr <- tibble(accession_number = df$accession_number, 
+                       sentimentr = as.data.frame(sentiment_by(text))$ave_sentiment)
+  
+  rm(text)
+  
+  # ----- Sentiment Afinn
+  sentiment_afinn <- tokenised %>%
+    inner_join(get_sentiments("afinn")) %>%
+    group_by(accession_number) %>% 
+    summarise(afinn_sent = sum(value))
+  
+  # ----- Sentiment bing
+  tokens_bing <- tokenised %>% 
+    inner_join(get_sentiments("bing"))
+    
+  word_count_bing <- tokens_bing %>% group_by(accession_number) %>% summarise(bing_total_words =n())
+    
+  sentiment_bing <- tokens_bing %>% 
+    group_by(accession_number,sentiment) %>% 
+     summarise(total_sentiment = n()) %>% 
+    spread(sentiment, total_sentiment, fill = 0) %>%
+    bind_rows(dummy_bing) %>%
+    left_join(word_count_bing) %>%
+    mutate(bing_sent = positive - negative,
+           bing_positive = positive/bing_total_words,
+           bing_negative = negative/bing_total_words) %>%
+    select(-c(positive, negative)) %>%
+    filter(accession_number != 'dummy')
+    
+    rm(tokens_bing, word_count_bing)
+  
+  # ----- Sentiment NRC
+  tokens_nrc <- tokenised %>% 
+    inner_join(get_sentiments("nrc")) 
+  
+  word_count_nrc <- tokens_nrc %>% group_by(accession_number) %>% summarise(nrc_total_words =n())
+  
+  sentiment_nrc <- tokens_nrc %>% 
+    group_by(accession_number,sentiment) %>% 
+    summarise(total_sentiment = n()) %>% 
+    spread(sentiment, total_sentiment, fill = 0) %>%
+    bind_rows(dummy_nrc) %>%
+    left_join(word_count_nrc) %>%
+    mutate(nrc_sent = positive - negative,
+           nrc_positive = positive / nrc_total_words,
+           nrc_negative = negative / nrc_total_words,
+           nrc_anger = anger/nrc_total_words,
+           nrc_fear = fear/nrc_total_words,
+           nrc_trust = trust/nrc_total_words,
+           nrc_sadness = sadness/nrc_total_words,
+           nrc_surprise = surprise/nrc_total_words,
+           nrc_disgust = disgust/nrc_total_words,
+           nrc_joy = joy/nrc_total_words,
+           nrc_anticipation = anticipation/nrc_total_words) %>%
+    select(-c(positive, negative, anger, trust, sadness, surprise, disgust,joy, anticipation, fear )) %>%
+    filter(accession_number != 'dummy')
+  
+  rm(tokens_nrc, word_count_nrc)
+  
+  # ----- Merging Sentiment Features
+  sentiment_df <- sentiment_LM %>%
+    left_join(complexity) %>%
+    left_join(sentimentr) %>%
+    left_join(sentiment_afinn) %>%
+    left_join(sentiment_bing) %>%
+    left_join(sentiment_nrc) %>%
+    left_join(sentiment_syuzhet_vader)
+  
+  rm(sentiment_LM, complexity, sentimentr, sentiment_afinn, sentiment_bing, sentiment_nrc, sentiment_syuzhet_vader, n_words, tokenised)
+
+  # ----- Insertion to SQL table
+  dbWriteTable(conn,"sentiment", sentiment_df, append = TRUE) # insert to sentiment_df Table
+  
+  rm(sentiment_df)
+
+  }
+  
+  print(paste(c, "of", length(cik)))
+}
+
+rm(df_cik, df_report, dummy_bing, dummy_LM, dummy_nrc, LM_dictionary, cik, c, r, sentiment, LM_dictionary_file)
+```
+
+
+## Getting Stock Price
+
+```{r}
+dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN stock_price_change double;')
+```
+
+
+```{r}
+
+cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
+
+for (c in 1:length(cik)) {
+
+  # ----- Import per CIK 
+  df_cik <- dbGetQuery(conn, 'SELECT master_index.cik, form_type, date_filed, accession_number, symbol FROM master_index 
+                            LEFT JOIN (SELECT cik, symbol FROM sp500 group by cik) AS sp500
+                            ON master_index.cik = sp500.cik
+                            WHERE master_index.cik = "1022079"') %>% mutate(date_filed = as.Date(date_filed, origin="1970-01-01"))
+
+
+  for (r in 1:nrow(df_cik)) {
+    
+      df_report <- df_cik[r,] # iterate for every row
+      
+      # ----- Get stock information
+      stock_data <- BatchGetSymbols(tickers = df_report$symbol,
+                                    first.date= df_report$date_filed - 7,
+                                    last.date= df_report$date_filed + 3,
+                                    type.return="log")
+      
+      # ----- Filter the 2nd day and the last day
+      stock_data_filtered <- stock_data[[2]] %>%
+        filter(ref.date == max(ref.date) | row_number() == 2) %>% 
+        arrange(desc(ref.date))
+      
+      # ----- Calculate stock price change on log scale
+      stock_price_change = stock_data_filtered$ret.closing.prices[1] - stock_data_filtered$ret.closing.prices[2]
+      
+      # ----- Update to DB
+      dbExecute(conn, paste0("UPDATE master_index SET stock_price_change = '",stock_price_change ,"' WHERE accession_number = '",accession_number ,"'"))
+  }
+
+}
+
+```
+
+
+
