@@ -38,9 +38,8 @@ dummy_nrc <- tibble(accession_number = 'dummy', positive = 0, negative = 0, ange
 dummy_bing <- tibble(accession_number = 'dummy', positive = 0, negative = 0)
 
 cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
-cik <- cik[267:499]
 
-accession_number_belum <- dbGetQuery(conn, 'SELECT master_index.accession_number FROM master_index WHERE master_index.accession_number NOT IN (SELECT accession_number FROM sentiment)')$accession_number
+# accession_number_belum <- dbGetQuery(conn, 'SELECT master_index.accession_number FROM master_index WHERE master_index.accession_number NOT IN (SELECT accession_number FROM sentiment)')$accession_number
 t1 <- Sys.time()
 #for (c in 1:length(cik)) {
 #  df_cik <- dbGetQuery(conn, paste0('SELECT accession_number, cleaned_text FROM master_index WHERE cik = "',cik[c], '"'))

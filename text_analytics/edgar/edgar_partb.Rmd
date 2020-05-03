@@ -25,6 +25,8 @@ library(sentimentr)
 library(textfeatures)
 library(BatchGetSymbols)
 library(lubridate)
+library(DataExplorer)
+library(gridExtra)
 ```
 
 
@@ -64,14 +66,14 @@ for (c in 1:length(cik)) {
   
   for (r in 1:nrow(df_cik)) {
     
-  df_report <- dbGetQuery(conn, paste0('SELECT accession_number, cleaned_text FROM master_index WHERE accession_number = "',df_cik[r], '"'))
+  df_report <- dbGetQuery(conn, paste0('SELECT accession_number, cleaned_text FROM master_index WHERE accession_number = "',df_cik$accession_number[r], '"'))
   # ----- Sentiment Syuzhet, Vader, and n_words
-  sentiment_syuzhet_vader <- textfeatures(df$cleaned_text, normalize = FALSE, word_dims = FALSE, sentiment = TRUE) %>%
+  sentiment_syuzhet_vader <- textfeatures(df_report$cleaned_text, normalize = FALSE, word_dims = FALSE, sentiment = TRUE) %>%
     select(sent_syuzhet,sent_vader) %>%
-    mutate(accession_number = df$accession_number)
+    mutate(accession_number = df_report$accession_number)
   
   # ----- Text Complexity
-  tokenised <- df %>% 
+  tokenised <- df_report %>% 
     unnest_tokens(word, cleaned_text)
     
   n_words <- tokenised %>%
@@ -116,8 +118,8 @@ for (c in 1:length(cik)) {
   rm(tokens_LM, word_count_LM)
   
   # ----- Sentimentr
-  text <- get_sentences(df$cleaned_text)
-  sentimentr <- tibble(accession_number = df$accession_number, 
+  text <- get_sentences(df_report$cleaned_text)
+  sentimentr <- tibble(accession_number = df_report$accession_number, 
                        sentimentr = as.data.frame(sentiment_by(text))$ave_sentiment)
   
   rm(text)
@@ -194,7 +196,7 @@ for (c in 1:length(cik)) {
 
   }
   
-  print(paste(c, "of", length(cik)))
+  print(paste(c, "of", length(cik), "sentiment calculated"))
 }
 
 rm(df_cik, df_report, dummy_bing, dummy_LM, dummy_nrc, LM_dictionary, cik, c, r, sentiment, LM_dictionary_file)
@@ -204,48 +206,289 @@ rm(df_cik, df_report, dummy_bing, dummy_LM, dummy_nrc, LM_dictionary, cik, c, r,
 ## Getting Stock Price
 
 ```{r}
-dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN stock_price_change double;')
+#dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN return_adjusted_price double;')
+# dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN price_adjusted_ratio double;')
+
+
+#dbExecute(conn, 'ALTER TABLE master_index RENAME stock_price_change TO return_adjusted_price')
+#dbExecute(conn, 'ALTER TABLE master_index RENAME stock_price_ratio TO price_adjusted_ratio')
 ```
 
 
 ```{r}
-
 cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
 
 for (c in 1:length(cik)) {
-
+  
   # ----- Import per CIK 
-  df_cik <- dbGetQuery(conn, 'SELECT master_index.cik, form_type, date_filed, accession_number, symbol FROM master_index 
+  df_cik <- dbGetQuery(conn, paste0('SELECT master_index.cik, form_type, date_filed, accession_number, symbol FROM master_index 
                             LEFT JOIN (SELECT cik, symbol FROM sp500 group by cik) AS sp500
                             ON master_index.cik = sp500.cik
-                            WHERE master_index.cik = "1022079"') %>% mutate(date_filed = as.Date(date_filed, origin="1970-01-01"))
-
-
+                            WHERE master_index.cik = "',  cik[c]   ,'"')) %>% mutate(date_filed = as.Date(date_filed, origin="1970-01-01"))
+  
+  
   for (r in 1:nrow(df_cik)) {
+    tryCatch({
+    df_report <- df_cik[r,] # iterate for every row
     
-      df_report <- df_cik[r,] # iterate for every row
-      
-      # ----- Get stock information
-      stock_data <- BatchGetSymbols(tickers = df_report$symbol,
-                                    first.date= df_report$date_filed - 7,
-                                    last.date= df_report$date_filed + 3,
-                                    type.return="log")
-      
-      # ----- Filter the 2nd day and the last day
-      stock_data_filtered <- stock_data[[2]] %>%
-        filter(ref.date == max(ref.date) | row_number() == 2) %>% 
-        arrange(desc(ref.date))
-      
-      # ----- Calculate stock price change on log scale
-      stock_price_change = stock_data_filtered$ret.closing.prices[1] - stock_data_filtered$ret.closing.prices[2]
-      
-      # ----- Update to DB
-      dbExecute(conn, paste0("UPDATE master_index SET stock_price_change = '",stock_price_change ,"' WHERE accession_number = '",accession_number ,"'"))
+    # ----- Get stock information
+    stock_data <- BatchGetSymbols(tickers = df_report$symbol,
+                                  first.date= df_report$date_filed - 7,
+                                  last.date= df_report$date_filed + 3,
+                                  type.return="log")
+    
+    # ----- Filter the 2nd day and the last day
+    stock_data_filtered <- stock_data[[2]] %>%
+      filter(ref.date == max(ref.date) | row_number() == 2) %>% 
+      arrange(desc(ref.date))
+    
+    # ----- Calculate stock price change on log scale
+    return_adjusted_price <- stock_data_filtered$ret.closing.prices[1] - stock_data_filtered$ret.closing.prices[2] # return difference
+    price_adjusted_ratio <- (stock_data_filtered$price.adjusted[1] / stock_data_filtered$price.adjusted[2]) - 1 # stock price ratio
+    
+    accession_number <- df_report$accession_number[1]
+    
+    # ----- Update to DB
+    dbExecute(conn, paste0("UPDATE master_index SET return_adjusted_price = ",return_adjusted_price ,", price_adjusted_ratio = ",price_adjusted_ratio ,"
+                              WHERE accession_number = '",accession_number ,"'"))
+    
+    
+    print(paste(accession_number, "has been processed..."))
+    
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
   }
-
+  
+  print(paste(c, "of", length(cik), "stock price change added"))
 }
 
+
+t2 <- Sys.time()
+t2-t1
 ```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# ----- Data Prep
+sentiment_data <- dbGetQuery(conn, 'SELECT sentiment.*, gics_sector, master_index.cik, company_name, year_filed, form_type, return_adjusted_price, price_adjusted_ratio FROM sentiment 
+                             INNER JOIN master_index ON sentiment.accession_number = master_index.accession_number 
+                             INNER JOIN (SELECT * FROM sp500 group by cik) AS sp500 ON master_index.cik = sp500.cik
+                             ') %>% mutate(year_filed = as.factor(year_filed),
+                                                                    company_name = as.factor(company_name),
+                                                                    cik = as.factor(cik),
+                                                                    gics_sector = as.factor(gics_sector),
+                                                                    accession_number = as.factor(accession_number),
+                                                                    price_adjusted_ratio = price_adjusted_ratio*100)
+
+
+save(sentiment_data, file = 'temp/sentiment_data.rda')
+load('temp/sentiment_data.rda')
+
+
+
+sentiment_data <- sentiment_data %>% 
+  filter(LM_total_words > 10 & bing_total_words > 10, nrc_total_words > 10) %>%
+  filter(price_adjusted_ratio != !is.na(price_adjusted_ratio) | return_adjusted_price != is.na(return_adjusted_price)) %>%
+      mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .)))
+          
+plot_missing(sentiment_data)
+plot_histogram(sentiment_data)
+
+```
+
+```{r}
+# ----- Plot Average Return
+return_avg <- sentiment_data %>%
+  group_by(gics_sector, year_filed, form_type) %>%
+  summarise(return_adjusted_price = mean(return_adjusted_price))
+
+return_avg %>%
+  ggplot(aes(x = year_filed, y = return_adjusted_price, color = gics_sector)) +
+  geom_line(aes(group = gics_sector))  +
+  labs(title = 'Average Log Return between 2009 and 2019 after SEC Filings', subtitle='Grouping on GICS sectors', x = 'Year Filed', y = 'Log Return', legend = 'GICS Sector') + coord_cartesian(ylim=c(-0.04,0.04)) +
+  facet_wrap(~form_type, ncol = 4, scales = "free")
+
+
+# ----- Plot Average Stock Price Change
+price_avg <- sentiment_data %>%
+  group_by(gics_sector, year_filed, form_type) %>%
+  summarise(price_adjusted_ratio = mean(price_adjusted_ratio))
+
+price_avg %>%
+  ggplot(aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) +
+  geom_line(aes(group = gics_sector))  +
+  labs(title = 'Average Stock Price Change between 2009 and 2019 after SEC Filings', subtitle='Grouping on GICS sectors', x = 'Year Filed', y = '% Change in Stock Price', legend = 'GICS Sector') + coord_cartesian(ylim=c(-10,10)) +
+  facet_wrap(~form_type, ncol = 4, scales = "free")
+
+rm(return_avg,price_avg)
+
+```
+
+
+### How Sentiment Analysis affect Stock Price Change
+
+```{r}
+sector <- unique(sentiment_data$gics_sector)
+
+
+# ----- Sector Level
+model_output_sector <- data.frame()
+
+for (s in 1:length(sector)) {
+  model_data <- sentiment_data %>% filter(form_type == "10-K", gics_sector == sector[s]) %>%
+  select(-c(accession_number,year_filed, form_type, cik, company_name, return_adjusted_price, gics_sector))
+  
+  # ----- Modelling
+  model <- lm(price_adjusted_ratio ~., data = model_data)
+  
+  # ----- Prep data for plotting
+  local_df <- head(as.data.frame(summary(model)$coefficients) %>%
+    tibble::rownames_to_column() %>%
+    mutate(absolute_t_value = abs(`t value`)) %>%
+    arrange(desc(absolute_t_value)) , 10) %>%
+    mutate(rowname=factor(rowname, levels=rowname)) %>%
+    mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
+    mutate(gics_sector = sector[s]) %>%
+    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model)$r.squared,3))))
+  
+  model_output_sector <- bind_rows(model_output_sector, local_df)
+}
+
+ggplot(model_output_sector, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
+  labs(title ='Top 10 Sentiment Features for predicting Stock Price Change after 10-K Filings', subtitle = 'groupings on GICS Sectors',y = 'Absolute t-value', x = 'Features') +
+  ylim(0,4) +  coord_flip() +
+  facet_wrap(~gics_sector+r_squared, ncol = 4, scales = "free")
+
+rm(model_output_sector)
+
+```
+
+
+
+```{r}
+# ----- Stock Price Modelling
+model_data <- sentiment_data %>% 
+  filter(form_type == "10-K") %>%
+select(-c(accession_number, form_type, cik, return_adjusted_price))
+  
+year_filed <- model_data$year_filed
+model_data <- model_data %>% select(-year_filed) # year_filed is removed so it is not considered by the model
+
+model <- lm(price_adjusted_ratio ~., data = model_data, na.action=na.exclude)
+  
+model_data$predicted_ratio <- stats::predict(model, newdata = model_data %>% select(-c(price_adjusted_ratio)))
+model_data$year_filed <- year_filed # add back year_filed as to help grouping
+
+
+
+local_df <- head(as.data.frame(summary(model)$coefficients) %>%
+    tibble::rownames_to_column() %>%
+    mutate(absolute_t_value = abs(`t value`)) %>%
+    arrange(desc(absolute_t_value)) , 1000) %>%
+    mutate(rowname=factor(rowname, levels=rowname)) %>%
+    mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
+    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model)$r.squared,3)))) %>%
+    mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("gics_sector", rowname, fixed = TRUE) ~ 'Sector Feature', TRUE ~ 'Sentiment Feature'))
+
+
+feature_category <- c('Sentiment Feature', 'Sector Feature', 'Company Feature')
+
+model_df <- data.frame()
+for(v in 1:length(feature_category)) {
+  top_n <- local_df %>% filter(category == feature_category[v]) %>% arrange(desc(absolute_t_value))
+  top_n <- top_n[1:10,]
+  model_df <- bind_rows(model_df, top_n)
+}
+
+
+ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
+  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model)$r.squared,3)) )) +
+  ylim(0,5) +  coord_flip() +
+  facet_wrap(~category, nrow = 4, scales = "free")
+
+
+rm(model_df, local_df, top_n)
+```
+
+
+```{r}
+rsq <- function (x, y) cor(x, y) ^ 2 # setup R-squared calculation
+
+# ----- Company Level
+company_agg <-  model_data %>%
+     group_by(year_filed, company_name, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+company_agg_rsquared <- round(rsq(company_agg$actual_ratio, company_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+company_agg_actual <- company_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+company_agg_predicted <- company_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+company_agg <- bind_rows(company_agg_actual, company_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(company_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = company_name)) + coord_cartesian(ylim=c(-50,50)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on company Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', company_agg_rsquared))
+
+rm(company_agg, company_agg_rsquared, company_agg_actual, company_agg_predicted)
+```
+
+
+```{r}
+# ----- Plot Industry Level
+gics_agg <-  model_data %>%
+     group_by(year_filed, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+gics_agg_rsquared <- round(rsq(gics_agg$actual_ratio, gics_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+gics_agg_actual <- gics_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+gics_agg_predicted <- gics_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+gics_agg <- bind_rows(gics_agg_actual, gics_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(gics_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = gics_sector)) + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on GICS Sector Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', gics_agg_rsquared))
+
+rm(gics_agg, gics_agg_rsquared, gics_agg_actual, gics_agg_predicted)
+```
+
+
+```{r}
+# ----- Market Level
+market_agg <-  model_data %>%
+     group_by(year_filed) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+market_agg_rsquared <- round(rsq(market_agg$actual_ratio, market_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+market_agg_actual <- market_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+market_agg_predicted <- market_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+market_agg <- bind_rows(market_agg_actual, market_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + geom_line() + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on Market Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', market_agg_rsquared))
+ 
+rm(market_agg, market_agg_rsquared, market_agg_actual, market_agg, market_agg_predicted)
+```
+
+
+
+
+
+
+
 
 
 
