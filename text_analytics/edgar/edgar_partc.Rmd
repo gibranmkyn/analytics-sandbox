@@ -29,10 +29,13 @@ library(gridExtra)
 library(stm)
 ```
 
+
+
+# Data Preparation
+
 ```{r}
 conn <- dbConnect(RSQLite::SQLite(), "/Volumes/Buku Gibran/edgar/edgar.db")
 ```
-
 
 ```{r}
 documents_dataset <- dbGetQuery(conn, 'SELECT master_index.cik, company_name, gics_sector, form_type, date_filed, year_filed, accession_number, cleaned_noun, price_adjusted_ratio FROM master_index INNER JOIN sp500 ON sp500.cik = master_index.cik')  %>% mutate(date_filed = as.Date(date_filed, origin="1970-01-01")) %>% mutate(cik = as.factor(cik), company_name = as.factor(company_name), gics_sector = as.factor(gics_sector), form_type = as.factor(form_type), year_filed = as.factor(year_filed), accession_number = as.factor(accession_number))
@@ -65,6 +68,7 @@ There are two main goals of initial exploration;
 
 By setting K = 0, the stm function will automatically select the number of topics, although there is no guarantee of achieving optimum, it is claimed to be a good start as it has a good computational advantage since it only need to run once. The heuristics of selecting K is to use the K suggested by the unsupervised algorithm, and define a set of neighbourhood of 5, including the proposed K, with an interval of 2. The neighbourhood of K is then reviewed by plotting its diognistic values.
 
+##  Pre-process Text and Building Unsupervised Model
 
 ```{r}
 
@@ -87,7 +91,7 @@ out_10k <- prepDocuments(processed$documents,
 stm_unsupervised_10k <- stm(documents = out_10k$documents, 
                       vocab = out_10k$vocab,
                       K = 0,
-                      prevalence = ~ as.factor(gics_sector) + s(year_filed),
+                      prevalence = ~ NULL,
                       max.em.its = 150,
                       data = out_10k$meta,
                       reportevery = 5,
@@ -144,10 +148,9 @@ unsupervised_frex %>%
   arrange(desc(proportion))
 ```
 
-
+# Modelling (Supervised Approach)
 
 ##  Deciding on K number of topics
-Neighbourhood of 5.
 
 ```{r}
 # ----- SearchK
@@ -161,8 +164,7 @@ plot(sk_result)
 ```
 
 
-
-
+##  Build Model with optimum K
 
 ```{r}
 set.seed(2107)
@@ -197,6 +199,7 @@ save(stm_supervised_10k, file = '/Volumes/Buku Gibran/edgar/temp/stm_supervised_
 topic_summary_supervised <- summary(stm_supervised_10k)
 ```
 
+##  Evaluate Supervised Model Performance
 
 ```{r}
 # ----- Review performance
@@ -244,7 +247,7 @@ supervised_frex %>%
 ```
 
 
-## How Topic affect Stock Price Change
+## Estimating Effect: How Topic affect Stock Price Change?
 
 ```{r}
 
@@ -285,9 +288,56 @@ cloud(stm_supervised_10k, topic = 44, type = c("model"), max.words = 100)
 cloud(stm_supervised_10k, topic = 4, type = c("model"), max.words = 100)
 ```
 
+## Estimate Effects: Topics Proportions over time
+```{r}
 
-### Model Fitting with Topic Features as addition
+load('/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
+load('/Volumes/Buku Gibran/edgar/temp/out_10k.rda')
 
+out_10k$meta$year_filed <- as.numeric(out_10k$meta$year_filed)
+
+effects_10k <- estimateEffect(~ factor(gics_sector) + s(year_filed),
+                          stmobj = stm_supervised_10k,
+                          metadata = out_10k$meta,
+                          uncertainty = 'None')
+
+
+
+
+convergence <- as.data.frame(stm_supervised_10k$theta)
+colnames(convergence) <- paste0("topic",1:70)
+
+topics_of_interest <- c(68,44,4)
+topic_labels <- c("Crisis","Hospitality & Travel", "Financial Terms")
+
+for (t in 1:length(topics_of_interest)){
+  
+plot(effects_10k, covariate = "year_filed",
+        topics = topics_of_interest[t],
+        model = stm_supervised_10k, method = "continuous",
+        xaxt='n',
+        xlab="Year Filed",
+        main = paste('Topic', topics_of_interest[t],':',topic_labels[t]),
+        printlegend = FALSE,
+        linecol = "black",
+        labeltype = "none")
+
+   axis(1,at=seq(from=1, 
+                 to= length(unique(out_10k$meta$year_filed)),
+                 by=1),  labels= c('2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019'))
+   
+}
+
+out_10k$meta$year_filed <- as.factor(out_10k$meta$year_filed) 
+```
+
+
+
+
+
+# Evaluate Additive Predictability of Topics
+
+## Model Fitting with Topic Features as addition
 ```{r}
 load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
 # ----- Adding significant topic variables to Exhaustive Model
@@ -315,7 +365,7 @@ load(file = '/Volumes/Buku Gibran/edgar/temp/model_10k_with_topic.rda')
 load(file = '/Volumes/Buku Gibran/edgar/temp/regression_data_full.rda')
 ```
 
-### Model Evaluation
+## Model Evaluation
 ```{r}
 # ----- Evaluate Model
 local_df <- head(as.data.frame(summary(model_10k_with_topic)$coefficients) %>%
@@ -420,52 +470,6 @@ ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + ge
 rm(market_agg, market_agg_rsquared_prev, market_agg_rsquared_new, market_agg_actual, market_agg_predicted_prev, market_agg_predicted_new)
 ```
 
-
-
-
-
-
-## Estimate Effects
-```{r}
-
-load('/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
-load('/Volumes/Buku Gibran/edgar/temp/out_10k.rda')
-
-out_10k$meta$year_filed <- as.numeric(out_10k$meta$year_filed)
-
-effects_10k <- estimateEffect(~ factor(gics_sector) + s(year_filed),
-                          stmobj = stm_supervised_10k,
-                          metadata = out_10k$meta,
-                          uncertainty = 'None')
-
-# out_10k$meta$year_filed <- as.factor(out_10k$meta$year_filed)
-
-
-convergence <- as.data.frame(stm_supervised_10k$theta)
-colnames(convergence) <- paste0("topic",1:70)
-
-topics_of_interest <- c(68,44,4)
-topic_labels <- c("Crisis","Hospitality & Travel", "Financial Terms")
-
-for (t in 1:length(topics_of_interest)){
-  
-plot(effects_10k, covariate = "year_filed",
-        topics = topics_of_interest[t],
-        model = stm_supervised_10k, method = "continuous",
-        xaxt='n',
-        xlab="Year Filed",
-        main = paste('Topic', topics_of_interest[t],':',topic_labels[t]),
-        printlegend = FALSE,
-        linecol = "black",
-        labeltype = "none")
-
-   axis(1,at=seq(from=1, 
-                 to= length(unique(out_10k$meta$year_filed)),
-                 by=1),  labels= c('2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019'))
-   
-}
-
-```
 
 
 
