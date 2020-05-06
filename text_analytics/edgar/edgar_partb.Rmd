@@ -289,7 +289,7 @@ sentiment_data <- dbGetQuery(conn, 'SELECT sentiment.*, gics_sector, master_inde
                                                                     price_adjusted_ratio = price_adjusted_ratio*100)
 
 
-save(sentiment_data, file = 'temp/sentiment_data.rda')
+
 load('temp/sentiment_data.rda')
 
 
@@ -298,6 +298,8 @@ sentiment_data <- sentiment_data %>%
   filter(LM_total_words > 10 & bing_total_words > 10, nrc_total_words > 10) %>%
   filter(price_adjusted_ratio != !is.na(price_adjusted_ratio) | return_adjusted_price != is.na(return_adjusted_price)) %>%
       mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .)))
+
+save(sentiment_data, file = '/Volumes/Buku Gibran/edgar/temp/sentiment_data.rda')
           
 plot_missing(sentiment_data)
 plot_histogram(sentiment_data)
@@ -374,28 +376,36 @@ rm(model_output_sector)
 
 
 ```{r}
+
+load(file = '/Volumes/Buku Gibran/edgar/temp/sentiment_data.rda')
 # ----- Stock Price Modelling
-model_data <- sentiment_data %>% 
+model_data_10k <- sentiment_data %>% 
   filter(form_type == "10-K") %>%
-select(-c(accession_number, form_type, cik, return_adjusted_price))
-  
-year_filed <- model_data$year_filed
-model_data <- model_data %>% select(-year_filed) # year_filed is removed so it is not considered by the model
-
-model <- lm(price_adjusted_ratio ~., data = model_data, na.action=na.exclude)
-  
-model_data$predicted_ratio <- stats::predict(model, newdata = model_data %>% select(-c(price_adjusted_ratio)))
-model_data$year_filed <- year_filed # add back year_filed as to help grouping
+select(-c(form_type, cik, return_adjusted_price))
 
 
+accession_number <- model_data_10k$accession_number
+year_filed <- model_data_10k$year_filed
+model_data_10k <- model_data_10k %>% select(-year_filed, accession_number) # year_filed is removed so it is not considered by the model
 
-local_df <- head(as.data.frame(summary(model)$coefficients) %>%
+model_10k <- lm(price_adjusted_ratio ~., data = model_data_10k, na.action=na.exclude)
+save(model_10k, file = '/Volumes/Buku Gibran/edgar/temp/model_10k.rda')
+
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_10k.rda')
+model_data_10k$predicted_ratio <- stats::predict(model_10k, newdata = model_data_10k %>% select(-c(price_adjusted_ratio)))
+model_data_10k$year_filed <- year_filed # add back year_filed as to help grouping
+model_data_10k$accession_number <- accession_number
+
+save(model_data_10k, file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
+
+
+local_df <- head(as.data.frame(summary(model_10k)$coefficients) %>%
     tibble::rownames_to_column() %>%
     mutate(absolute_t_value = abs(`t value`)) %>%
     arrange(desc(absolute_t_value)) , 1000) %>%
     mutate(rowname=factor(rowname, levels=rowname)) %>%
     mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
-    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model)$r.squared,3)))) %>%
+    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model_10k)$r.squared,3)))) %>%
     mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("gics_sector", rowname, fixed = TRUE) ~ 'Sector Feature', TRUE ~ 'Sentiment Feature'))
 
 
@@ -410,7 +420,7 @@ for(v in 1:length(feature_category)) {
 
 
 ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
-  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model)$r.squared,3)) )) +
+  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model_10k)$r.squared,3)) )) +
   ylim(0,5) +  coord_flip() +
   facet_wrap(~category, nrow = 4, scales = "free")
 
@@ -423,7 +433,7 @@ rm(model_df, local_df, top_n)
 rsq <- function (x, y) cor(x, y) ^ 2 # setup R-squared calculation
 
 # ----- Company Level
-company_agg <-  model_data %>%
+company_agg <-  model_data_10k %>%
      group_by(year_filed, company_name, gics_sector) %>%
     summarise(actual_ratio = mean(price_adjusted_ratio),
               predicted_ratio = mean(predicted_ratio))
@@ -444,7 +454,7 @@ rm(company_agg, company_agg_rsquared, company_agg_actual, company_agg_predicted)
 
 ```{r}
 # ----- Plot Industry Level
-gics_agg <-  model_data %>%
+gics_agg <-  model_data_10k %>%
      group_by(year_filed, gics_sector) %>%
     summarise(actual_ratio = mean(price_adjusted_ratio),
               predicted_ratio = mean(predicted_ratio))
@@ -465,7 +475,7 @@ rm(gics_agg, gics_agg_rsquared, gics_agg_actual, gics_agg_predicted)
 
 ```{r}
 # ----- Market Level
-market_agg <-  model_data %>%
+market_agg <-  model_data_10k %>%
      group_by(year_filed) %>%
     summarise(actual_ratio = mean(price_adjusted_ratio),
               predicted_ratio = mean(predicted_ratio))

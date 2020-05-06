@@ -1,0 +1,365 @@
+---
+title: "edgar_partc"
+author: "Gibran Makyanie"
+date: "04/05/2020"
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
+
+library(tidyverse)
+library(edgar)
+library(XML)
+library(lubridate)
+library(tm)
+library(RSQLite)
+library(tidytext)
+library(udpipe)
+library(rvest)
+library(readxl)
+library(qdap)
+library(sentimentr)
+library(textfeatures)
+library(BatchGetSymbols)
+library(lubridate)
+library(DataExplorer)
+library(gridExtra)
+library(stm)
+```
+
+```{r}
+conn <- dbConnect(RSQLite::SQLite(), "/Volumes/Buku Gibran/edgar/edgar.db")
+```
+
+
+```{r}
+documents_dataset <- dbGetQuery(conn, 'SELECT master_index.cik, company_name, gics_sector, form_type, date_filed, year_filed, accession_number, cleaned_noun, price_adjusted_ratio FROM master_index INNER JOIN sp500 ON sp500.cik = master_index.cik')  %>% mutate(date_filed = as.Date(date_filed, origin="1970-01-01")) %>% mutate(cik = as.factor(cik), company_name = as.factor(company_name), gics_sector = as.factor(gics_sector), form_type = as.factor(form_type), year_filed = as.factor(year_filed), accession_number = as.factor(accession_number))
+  
+
+documents_10q <- documents_dataset %>% filter(form_type == '10-Q')
+save(documents_10q, file = '/Volumes/Buku Gibran/edgar/temp/documents_10q.rda')
+load('/Volumes/Buku Gibran/edgar/temp/documents_10q.rda')
+
+rm(documents_10q)
+
+documents_10k <- documents_dataset %>% filter(form_type == '10-K')
+save(documents_10k, file = '/Volumes/Buku Gibran/edgar/temp/documents_10k.rda')
+
+
+documents_10k <- documents_10k %>% na.omit()
+load('/Volumes/Buku Gibran/edgar/temp/documents_10k.rda')
+rm(documents_dataset)
+```
+
+
+The aim of topic modelling is to discover themes or topics assumed to have in a corpus of documents. The STM package is used to guide the process of topic modelling to discover and estimate relationship of topics to the meta-data of the corpus. This section can be classified into: Initial Exploration (Unsupervised Topic Modelling), Model and Review (Supervised Topic Modelling), and Estimating Effects.
+
+
+# Initial Exploration (Unsupervised Approach)
+
+There are two main goals of initial exploration;
+- Identify appropriate K (kappa) number of topics
+- Check whether another iteration of data cleaning is required to achieve a reasonable set of topics.
+
+By setting K = 0, the stm function will automatically select the number of topics, although there is no guarantee of achieving optimum, it is claimed to be a good start as it has a good computational advantage since it only need to run once. The heuristics of selecting K is to use the K suggested by the unsupervised algorithm, and define a set of neighbourhood of 5, including the proposed K, with an interval of 2. The neighbourhood of K is then reviewed by plotting its diognistic values.
+
+
+```{r}
+
+set.seed(2107)
+
+# ----- Corpus Preparation
+processed <- textProcessor(sample_10k$cleaned_noun,
+                           metadata = sample_10k,
+                           customstopwords = c("net","product","service","margin","volume","revenue","inventory"),
+                           stem = F)
+
+threshold <- round(1/100 * length(processed$documents),0)
+
+out_10k <- prepDocuments(processed$documents, 
+                     processed$vocab,
+                     processed$meta,
+                     lower.thresh = threshold)
+
+# ----- STM model fitting
+stm_unsupervised_10k <- stm(documents = out_10k$documents, 
+                      vocab = out_10k$vocab,
+                      K = 0,
+                      prevalence = ~ as.factor(gics_sector) + s(year_filed),
+                      max.em.its = 150,
+                      data = out_10k$meta,
+                      reportevery = 5,
+                      sigma.prior = 0.7,
+                      init.type = "Spectral")
+
+save(stm_unsupervised_10k, file = '/Volumes/Buku Gibran/edgar/temp/stm_unsupervised_10k.rda')
+```
+
+##  Evaluate Model Performance
+
+By using the summary function on the unsupervised stm model, we can review the proposed topics including its top 7 words along arranged by FREX (overall frequency and how exlcusive the words to that topic), lift weights (higher weight when less frequent in other topics), and probablity of the word belong to the topic. Although it sounds less complex than FREX and lift, I would argue that the word-topic probability is what we are looking for to identify words that 'cannot make their mind to which topic they belong', or simply put, stopwords.
+
+```{r}
+# ----- Review performance
+topic_summary_unsupervised <- summary(stm_unsupervised_10k)
+plot(stm_unsupervised_10k) # plot the topic model
+topicQuality(stm_unsupervised_10k,documents = out_10k$documents) # review topic semantic-coherence
+
+# ----- Review word frequency to identify potential stopwords
+
+unsupervised_k <- length(topic_summary_unsupervised$topicnums)
+top_topic_words <- c()
+for (i in 1:unsupervised_k){
+  top_topic_words <- c(top_topic_words, topic_summary_unsupervised$prob[i,])
+}
+
+data.frame(word = top_topic_words) %>%
+  group_by(word) %>%
+  summarise(count =n()) %>%
+  arrange(desc(count)) %>%
+  top_n(50) %>%
+  mutate(word = factor(word, word)) %>%
+  ggplot(aes(x = reorder(word, count), y = count)) + geom_bar(stat="identity") + coord_flip() + labs(title = 'Occurance of Highest Probable Words Across Topics',subtitle = paste('a result of unsupervised stm with', unsupervised_k, 'number of topics'), x ='Word') + scale_y_continuous(breaks=c(2,4,6,8,10))
+
+
+
+# ----- Review FREX words for every topic
+topic_proportions <- colMeans(stm_unsupervised_10k$theta)
+
+unsupervised_frex <- data.frame()
+for(i in 1:length(topic_summary_unsupervised$topicnums)){
+
+   row_here <- tibble(topicnum= topic_summary_unsupervised$topicnums[i],
+                  #    topic_label = topic_labels[i],
+                      proportion = 100*round(topic_proportions[i],4),
+                     frex_words = paste(topic_summary_unsupervised$frex[i,1:7],
+                                        collapse = ","))
+   unsupervised_frex <- rbind(row_here,unsupervised_frex)
+}
+
+
+unsupervised_frex %>%
+  arrange(desc(proportion))
+```
+
+
+
+##  Deciding on K number of topics
+Neighbourhood of 5.
+
+```{r}
+# ----- SearchK
+expected_K <- c(unsupervised_k - 6 , unsupervised_k -4 ,unsupervised_k - 2, unsupervised_k, unsupervised_k + 2 ,unsupervised_k+4, unsupervised_k+6) #unsupervised_k is 64
+sk_result <- searchK(out_10k$documents,out_10k$vocab, expected_K)
+save(sk_result, file = '/Volumes/Buku Gibran/edgar/temp/sk_result.rda')
+
+plot(sk_result)
+
+
+```
+
+
+
+
+
+```{r}
+set.seed(2107)
+
+# ----- Corpus Preparation
+processed <- textProcessor(documents_10k$cleaned_noun,
+                           metadata = documents_10k,
+                           customstopwords = c("net","product","service","margin","volume","revenue","inventory"),
+                           stem = FALSE)
+
+threshold <- round(1/100 * length(processed$documents),0)
+
+out_10k <- prepDocuments(processed$documents, 
+                     processed$vocab,
+                     processed$meta,
+                     lower.thresh = threshold)
+save(out_10k, file = '/Volumes/Buku Gibran/edgar/temp/out_10k.rda')
+
+# ----- STM model fitting
+stm_supervised_10k <- stm(documents = out_10k$documents, 
+                      vocab = out_10k$vocab,
+                      K = 70,
+                      prevalence = ~ factor(gics_sector) + s(year_filed),
+                      max.em.its = 150,
+                      data = out_10k$meta,
+                      reportevery = 5,
+                      sigma.prior = 0.7,
+                      init.type = "Spectral")
+
+save(stm_supervised_10k, file = '/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
+
+topic_summary_supervised <- summary(stm_supervised_10k)
+```
+
+
+```{r}
+# ----- Review performance
+plot(stm_supervised_10k) # plot the topic model
+topicQuality(stm_supervised_10k,documents = out_10k$documents) # review topic semantic-coherence
+
+
+# ----- Review word frequency to identify potential stopwords
+top_topic_words <- c()
+supervised_k <- length(topic_summary_supervised$topicnums)
+
+for (i in 1:supervised_k){
+  top_topic_words <- c(top_topic_words, topic_summary$prob[i,])
+}
+
+data.frame(word = top_topic_words) %>%
+  group_by(word) %>%
+  summarise(count =n()) %>%
+  arrange(desc(count)) %>%
+  top_n(50) %>%
+  mutate(word = factor(word, word)) %>%
+  ggplot(aes(x = reorder(word, count), y = count)) + geom_bar(stat="identity") + coord_flip() + labs(title = 'Occurance of Highest Probable Words Across Topics',subtitle = paste('a result of supervised stm with', supervised_k, 'number of topics'), x ='Word')
+
+
+# ----- Review FREX words for every topic
+topic_proportions <- colMeans(stm_supervised_10k$theta)
+
+supervised_frex <- data.frame()
+for(i in 1:length(topic_summary_supervised$topicnums)){
+
+   row_here <- tibble(topicnum= topic_summary_supervised$topicnums[i],
+                  #    topic_label = topic_labels[i],
+                      proportion = 100*round(topic_proportions[i],4),
+                     frex_words = paste(topic_summary_supervised$frex[i,1:7],
+                                        collapse = ","))
+   supervised_frex <- rbind(row_here,supervised_frex)
+}
+rm(row_here)
+
+supervised_frex %>%
+  arrange(desc(proportion)) %>%
+  filter(topicnum == 68)
+
+
+```
+
+
+## Estimate Effects
+```{r}
+
+load('/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
+
+effects_10k <- estimateEffect(~ factor(gics_sector) + s(year_filed),
+                          stmobj = stm_supervised_10k,
+                          metadata = out_10k$meta,
+                          uncertainty = 'None')
+
+
+str(out_10k$meta)
+```
+
+
+
+## Topic effect to Price Stock Change
+
+```{r}
+
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
+
+convergence <- as.data.frame(stm_supervised_10k$theta)
+colnames(convergence) <- paste0("topic",1:70)
+
+
+model_data_10k
+
+regression_data <- cbind(out_10k$meta,convergence) %>% na.omit() %>% select(-c(cleaned_noun, accession_number, date_filed, cik, year_filed, company_name, gics_sector, form_type))
+
+topic_regression <- lm(price_adjusted_ratio ~ . ,data = regression_data)
+
+
+topic_regression_summary <- head(as.data.frame(summary(topic_regression)$coefficients) %>%
+    tibble::rownames_to_column() %>%
+    mutate(absolute_t_value = abs(`t value`)) %>%
+    arrange(desc(absolute_t_value)) , 10) %>%
+    mutate(rowname=factor(rowname, levels=rowname)) %>%
+    mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
+    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(topic_regression)$r.squared,3))))
+
+ggplot(topic_regression_summary, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
+  labs(title ='Top 10 Topic Features for predicting Stock Price Change after 10-K Filings', y = 'Absolute t-value', x = 'Features') + coord_flip()
+
+# ----- Topic effect singualar
+library(stargazer)
+topic68_regression <- lm(price_adjusted_ratio ~ topic68,data = regression_data)
+topic44_regression <- lm(price_adjusted_ratio ~ topic44,data = regression_data)
+topic4_regression <- lm(price_adjusted_ratio ~ topic4,data = regression_data)
+stargazer::stargazer(topic68_regression,topic44_regression,topic4_regression,type = "text")
+
+
+rm(topic_regression, topic_regression_summary, topic68_regression, topic44_regression, topic4_regression, regression_data)
+
+```
+
+
+
+
+```{r}
+
+# ----- Adding significant topic variables to Exhaustive Model
+regression_data_full <- cbind(out_10k$meta,convergence) %>% select(cik, company_name, accession_number, gics_sector, year_filed, topic68, topic44, topic4) %>% na.omit() %>% left_join(model_data_10k %>% select(-c(year_filed, gics_sector, company_name)), by= 'accession_number') %>% ungroup() %>% drop_na()
+
+accession_number <- regression_data_full$accession_number
+year_filed <- regression_data_full$year_filed
+predicted_ratio <- regression_data_full$predicted_ratio
+regression_data_full <- regression_data_full %>% select(-c(year_filed, accession_number, predicted_ratio, cik))
+
+model_10k_with_topic <- lm(price_adjusted_ratio ~., data = regression_data_full, na.action=na.exclude)
+
+summary(model_10k_with_topic)
+
+regression_data_full$predicted_ratio_new <- stats::predict(model_10k_with_topic, newdata = regression_data_full %>% select(-c(price_adjusted_ratio)))
+regression_data_full$year_filed <- year_filed # add back year_filed as to help grouping
+regression_data_full$accession_number <- accession_number
+regression_data_full$predicted_ratio <- predicted_ratio
+
+
+save(model_10k_with_topic, file = '/Volumes/Buku Gibran/edgar/temp/model_10k_with_topic.rda')
+save(regression_data_full, file = '/Volumes/Buku Gibran/edgar/temp/regression_data_full.rda')
+
+
+
+# ----- Evaluate Model
+local_df <- head(as.data.frame(summary(model_10k_with_topic)$coefficients) %>%
+    tibble::rownames_to_column() %>%
+    mutate(absolute_t_value = abs(`t value`)) %>%
+    arrange(desc(absolute_t_value)) , 1000) %>%
+    mutate(rowname=factor(rowname, levels=rowname)) %>%
+    mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
+    mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model_10k_with_topic)$r.squared,3)))) %>%
+    mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("gics_sector", rowname, fixed = TRUE) ~ 'Sector Feature', grepl("topic", rowname, fixed = TRUE) ~ 'Topic Feature', TRUE ~ 'Sentiment Feature'))
+
+
+feature_category <- c('Topic Feature','Sentiment Feature', 'Company Feature')
+
+model_df <- data.frame()
+for(v in 1:length(feature_category)) {
+  top_n <- local_df %>% filter(category == feature_category[v]) %>% arrange(desc(absolute_t_value))
+  top_n <- top_n[1:10,]
+  model_df <- bind_rows(model_df, top_n)
+}
+
+
+ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
+  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model_10k_with_topic)$r.squared,3)) )) +  coord_flip() +
+  facet_wrap(~category, nrow = 4, scales = "free")
+
+
+```
+
+
+
+
+
+
+
+
