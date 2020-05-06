@@ -453,7 +453,7 @@ rm(company_agg, company_agg_rsquared, company_agg_actual, company_agg_predicted)
 
 
 ```{r}
-# ----- Plot Industry Level
+# ----- GICS Industry Level
 gics_agg <-  model_data_10k %>%
      group_by(year_filed, gics_sector) %>%
     summarise(actual_ratio = mean(price_adjusted_ratio),

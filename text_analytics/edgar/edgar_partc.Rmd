@@ -244,33 +244,13 @@ supervised_frex %>%
 ```
 
 
-## Estimate Effects
-```{r}
-
-load('/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
-
-effects_10k <- estimateEffect(~ factor(gics_sector) + s(year_filed),
-                          stmobj = stm_supervised_10k,
-                          metadata = out_10k$meta,
-                          uncertainty = 'None')
-
-
-str(out_10k$meta)
-```
-
-
-
-## Topic effect to Price Stock Change
+## How Topic affect Stock Price Change
 
 ```{r}
 
-load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
-
+# ----- All topics effect
 convergence <- as.data.frame(stm_supervised_10k$theta)
 colnames(convergence) <- paste0("topic",1:70)
-
-
-model_data_10k
 
 regression_data <- cbind(out_10k$meta,convergence) %>% na.omit() %>% select(-c(cleaned_noun, accession_number, date_filed, cik, year_filed, company_name, gics_sector, form_type))
 
@@ -288,6 +268,7 @@ topic_regression_summary <- head(as.data.frame(summary(topic_regression)$coeffic
 ggplot(topic_regression_summary, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
   labs(title ='Top 10 Topic Features for predicting Stock Price Change after 10-K Filings', y = 'Absolute t-value', x = 'Features') + coord_flip()
 
+
 # ----- Topic effect singualar
 library(stargazer)
 topic68_regression <- lm(price_adjusted_ratio ~ topic68,data = regression_data)
@@ -295,16 +276,20 @@ topic44_regression <- lm(price_adjusted_ratio ~ topic44,data = regression_data)
 topic4_regression <- lm(price_adjusted_ratio ~ topic4,data = regression_data)
 stargazer::stargazer(topic68_regression,topic44_regression,topic4_regression,type = "text")
 
-
 rm(topic_regression, topic_regression_summary, topic68_regression, topic44_regression, topic4_regression, regression_data)
 
+
+# ----- Plot most significant topics in cloud words
+cloud(stm_supervised_10k, topic = 68, type = c("model"), max.words = 100)
+cloud(stm_supervised_10k, topic = 44, type = c("model"), max.words = 100)
+cloud(stm_supervised_10k, topic = 4, type = c("model"), max.words = 100)
 ```
 
 
-
+### Model Fitting with Topic Features as addition
 
 ```{r}
-
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
 # ----- Adding significant topic variables to Exhaustive Model
 regression_data_full <- cbind(out_10k$meta,convergence) %>% select(cik, company_name, accession_number, gics_sector, year_filed, topic68, topic44, topic4) %>% na.omit() %>% left_join(model_data_10k %>% select(-c(year_filed, gics_sector, company_name)), by= 'accession_number') %>% ungroup() %>% drop_na()
 
@@ -317,17 +302,21 @@ model_10k_with_topic <- lm(price_adjusted_ratio ~., data = regression_data_full,
 
 summary(model_10k_with_topic)
 
-regression_data_full$predicted_ratio_new <- stats::predict(model_10k_with_topic, newdata = regression_data_full %>% select(-c(price_adjusted_ratio)))
+regression_data_full$new_predicted_ratio <- stats::predict(model_10k_with_topic, newdata = regression_data_full %>% select(-c(price_adjusted_ratio)))
 regression_data_full$year_filed <- year_filed # add back year_filed as to help grouping
 regression_data_full$accession_number <- accession_number
-regression_data_full$predicted_ratio <- predicted_ratio
+regression_data_full$prev_predicted_ratio <- predicted_ratio
 
 
 save(model_10k_with_topic, file = '/Volumes/Buku Gibran/edgar/temp/model_10k_with_topic.rda')
 save(regression_data_full, file = '/Volumes/Buku Gibran/edgar/temp/regression_data_full.rda')
 
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_10k_with_topic.rda')
+load(file = '/Volumes/Buku Gibran/edgar/temp/regression_data_full.rda')
+```
 
-
+### Model Evaluation
+```{r}
 # ----- Evaluate Model
 local_df <- head(as.data.frame(summary(model_10k_with_topic)$coefficients) %>%
     tibble::rownames_to_column() %>%
@@ -336,7 +325,7 @@ local_df <- head(as.data.frame(summary(model_10k_with_topic)$coefficients) %>%
     mutate(rowname=factor(rowname, levels=rowname)) %>%
     mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
     mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model_10k_with_topic)$r.squared,3)))) %>%
-    mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("gics_sector", rowname, fixed = TRUE) ~ 'Sector Feature', grepl("topic", rowname, fixed = TRUE) ~ 'Topic Feature', TRUE ~ 'Sentiment Feature'))
+    mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("topic", rowname, fixed = TRUE) ~ 'Topic Feature', TRUE ~ 'Sentiment Feature'))
 
 
 feature_category <- c('Topic Feature','Sentiment Feature', 'Company Feature')
@@ -345,17 +334,138 @@ model_df <- data.frame()
 for(v in 1:length(feature_category)) {
   top_n <- local_df %>% filter(category == feature_category[v]) %>% arrange(desc(absolute_t_value))
   top_n <- top_n[1:10,]
-  model_df <- bind_rows(model_df, top_n)
+  model_df <- bind_rows(model_df, top_n) %>% drop_na()
 }
 
 
 ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
-  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model_10k_with_topic)$r.squared,3)) )) +  coord_flip() +
+  labs(title ='Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model_10k_with_topic)$r.squared,3)) )) +  coord_flip() + ylim(0,11) +
   facet_wrap(~category, nrow = 4, scales = "free")
 
-
+rm(top_n, model_df, local_df)
 ```
 
+```{r}
+rsq <- function (x, y) cor(x, y) ^ 2 # setup R-squared calculation
+
+# ----- Company Level
+company_agg <-  regression_data_full %>%
+     group_by(year_filed, company_name, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              prev_predicted_ratio = mean(prev_predicted_ratio),
+              new_predicted_ratio = mean(new_predicted_ratio))
+
+company_agg_rsquared_prev <- round(rsq(company_agg$actual_ratio, company_agg$prev_predicted_ratio), 3) # calculate R-squared between actual and predicted
+company_agg_rsquared_new <- round(rsq(company_agg$actual_ratio, company_agg$new_predicted_ratio), 3) # calculate R-squared between actual and predicted
+
+  
+company_agg_actual <- company_agg %>% select(-c(prev_predicted_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+company_agg_predicted_prev <- company_agg %>% select(-c(actual_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = prev_predicted_ratio, group = 'Model wihtout Topics') %>% select(-prev_predicted_ratio)
+company_agg_predicted_new <- company_agg %>% select(-actual_ratio, prev_predicted_ratio) %>% mutate(price_adjusted_ratio = new_predicted_ratio, group = 'Model with Topics') %>% select(-new_predicted_ratio)
+  
+company_agg <- bind_rows(company_agg_actual, company_agg_predicted_prev, company_agg_predicted_new)
+    
+# ----- Plot Actual vs Model
+ggplot(company_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = company_name)) + coord_cartesian(ylim=c(-50,50)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Models', subtitle = 'groupings on company Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared from ', company_agg_rsquared_prev,' to ', company_agg_rsquared_new))
+
+rm(company_agg, company_agg_rsquared_prev, company_agg_rsquared_new, company_agg_actual, company_agg_predicted_prev, company_agg_predicted_new)
+```
+
+```{r}
+# ----- GICS Level
+gics_agg <-  regression_data_full %>%
+     group_by(year_filed, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              prev_predicted_ratio = mean(prev_predicted_ratio),
+              new_predicted_ratio = mean(new_predicted_ratio))
+
+gics_agg_rsquared_prev <- round(rsq(gics_agg$actual_ratio, gics_agg$prev_predicted_ratio), 3) # calculate R-squared between actual and predicted
+gics_agg_rsquared_new <- round(rsq(gics_agg$actual_ratio, gics_agg$new_predicted_ratio), 3) # calculate R-squared between actual and predicted
+
+  
+gics_agg_actual <- gics_agg %>% select(-c(prev_predicted_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+gics_agg_predicted_prev <- gics_agg %>% select(-c(actual_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = prev_predicted_ratio, group = 'Model wihtout Topics') %>% select(-prev_predicted_ratio)
+gics_agg_predicted_new <- gics_agg %>% select(-actual_ratio, prev_predicted_ratio) %>% mutate(price_adjusted_ratio = new_predicted_ratio, group = 'Model with Topics') %>% select(-new_predicted_ratio)
+  
+gics_agg <- bind_rows(gics_agg_actual, gics_agg_predicted_prev, gics_agg_predicted_new)
+    
+# ----- Plot Actual vs Model
+ggplot(gics_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = gics_sector)) + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Models', subtitle = 'groupings on GICS Sector Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared from ', gics_agg_rsquared_prev,' to ', gics_agg_rsquared_new))
+
+rm(gics_agg, gics_agg_rsquared_prev, gics_agg_rsquared_new, gics_agg_actual, gics_agg_predicted_prev, gics_agg_predicted_new)
+```
+
+
+```{r}
+# ----- Market Level
+market_agg <-  regression_data_full %>%
+     group_by(year_filed) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              prev_predicted_ratio = mean(prev_predicted_ratio),
+              new_predicted_ratio = mean(new_predicted_ratio))
+
+market_agg_rsquared_prev <- round(rsq(market_agg$actual_ratio, market_agg$prev_predicted_ratio), 3) # calculate R-squared between actual and predicted
+market_agg_rsquared_new <- round(rsq(market_agg$actual_ratio, market_agg$new_predicted_ratio), 3) # calculate R-squared between actual and predicted
+
+  
+market_agg_actual <- market_agg %>% select(-c(prev_predicted_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+market_agg_predicted_prev <- market_agg %>% select(-c(actual_ratio, new_predicted_ratio)) %>% mutate(price_adjusted_ratio = prev_predicted_ratio, group = 'Model wihtout Topics') %>% select(-prev_predicted_ratio)
+market_agg_predicted_new <- market_agg %>% select(-actual_ratio, prev_predicted_ratio) %>% mutate(price_adjusted_ratio = new_predicted_ratio, group = 'Model with Topics') %>% select(-new_predicted_ratio)
+  
+market_agg <- bind_rows(market_agg_actual, market_agg_predicted_prev, market_agg_predicted_new)
+
+# ----- Plot Actual vs Model
+ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + geom_line() + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Models', subtitle = 'groupings on Market Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared from ', market_agg_rsquared_prev,' to ', market_agg_rsquared_new))
+
+rm(market_agg, market_agg_rsquared_prev, market_agg_rsquared_new, market_agg_actual, market_agg_predicted_prev, market_agg_predicted_new)
+```
+
+
+
+
+
+
+## Estimate Effects
+```{r}
+
+load('/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
+load('/Volumes/Buku Gibran/edgar/temp/out_10k.rda')
+
+out_10k$meta$year_filed <- as.numeric(out_10k$meta$year_filed)
+
+effects_10k <- estimateEffect(~ factor(gics_sector) + s(year_filed),
+                          stmobj = stm_supervised_10k,
+                          metadata = out_10k$meta,
+                          uncertainty = 'None')
+
+# out_10k$meta$year_filed <- as.factor(out_10k$meta$year_filed)
+
+
+convergence <- as.data.frame(stm_supervised_10k$theta)
+colnames(convergence) <- paste0("topic",1:70)
+
+topics_of_interest <- c(68,44,4)
+topic_labels <- c("Crisis","Hospitality & Travel", "Financial Terms")
+
+for (t in 1:length(topics_of_interest)){
+  
+plot(effects_10k, covariate = "year_filed",
+        topics = topics_of_interest[t],
+        model = stm_supervised_10k, method = "continuous",
+        xaxt='n',
+        xlab="Year Filed",
+        main = paste('Topic', topics_of_interest[t],':',topic_labels[t]),
+        printlegend = FALSE,
+        linecol = "black",
+        labeltype = "none")
+
+   axis(1,at=seq(from=1, 
+                 to= length(unique(out_10k$meta$year_filed)),
+                 by=1),  labels= c('2009','2010','2011','2012','2013','2014','2015','2016','2017','2018','2019'))
+   
+}
+
+```
 
 
 
