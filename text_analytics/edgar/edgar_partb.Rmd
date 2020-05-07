@@ -2,14 +2,16 @@
 title: "edgar_partb"
 author: "Gibran Makyanie"
 date: "27/04/2020"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 
 ```{r setup, include=FALSE}
 rm(list = ls())
 knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
-
+knitr::opts_chunk$set(eval = FALSE)
 library(tidyverse)
 library(edgar)
 library(XML)
@@ -27,14 +29,19 @@ library(BatchGetSymbols)
 library(lubridate)
 library(DataExplorer)
 library(gridExtra)
+library(stm)
 ```
 
+# Data Preparation
 
 ```{r}
 conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
 ```
 
 
+# Text Feature Extraction
+
+## Importing Louhran & McDonald's stopwords
 ```{r}
 # -- Import LM Dictionary
 LM_dictionary_file <- "LoughranMcDonald_SentimentWordLists_2018.xlsx"
@@ -55,7 +62,8 @@ dummy_bing <- tibble(accession_number = 'dummy', positive = 0, negative = 0)
 ```
 
 
-## Calculating Sentiment Measures
+## Calculating Sentiment Measures and Loading to sentiment table
+
 ```{r}
 
 cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
@@ -203,19 +211,17 @@ rm(df_cik, df_report, dummy_bing, dummy_LM, dummy_nrc, LM_dictionary, cik, c, r,
 ```
 
 
-## Getting Stock Price
+## Downloading Stock Price
 
 ```{r}
-#dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN return_adjusted_price double;')
-# dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN price_adjusted_ratio double;')
-
-
-#dbExecute(conn, 'ALTER TABLE master_index RENAME stock_price_change TO return_adjusted_price')
-#dbExecute(conn, 'ALTER TABLE master_index RENAME stock_price_ratio TO price_adjusted_ratio')
+# ----- Set up columns
+dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN return_adjusted_price double;')
+dbExecute (conn, 'ALTER TABLE master_index ADD COLUMN price_adjusted_ratio double;')
 ```
 
 
 ```{r}
+# ----- Downloading and Loading to master_index table
 cik <- dbGetQuery(conn, 'SELECT distinct(cik) as cik FROM master_index')$cik
 
 for (c in 1:length(cik)) {
@@ -274,8 +280,11 @@ t2-t1
 
 
 
+# Predicting Stock Price Change
 
 
+
+## Exploratory Data Analysis
 ```{r}
 # ----- Data Prep
 sentiment_data <- dbGetQuery(conn, 'SELECT sentiment.*, gics_sector, master_index.cik, company_name, year_filed, form_type, return_adjusted_price, price_adjusted_ratio FROM sentiment 
@@ -335,13 +344,35 @@ rm(return_avg,price_avg)
 ```
 
 
-### How Sentiment Analysis affect Stock Price Change
+## How Sentiment Analysis affect Stock Price Change
+
+```{r}
+# ----- Individual Dictionaries
+load('/Volumes/Buku Gibran/edgar/temp/sentiment_data.rda')
+
+
+sentiment_regression_data <-sentiment_data %>% filter(form_type ==  '10-K') %>% select(-c(form_type, year_filed, cik, company_name, return_adjusted_price, gics_sector, accession_number))x
+str(sentiment_regression_data)
+
+reg_10k_LM <- lm(price_adjusted_ratio ~ LM_total_words + LM_sent + LM_positive + LM_negative + LM_uncertainty + LM_litigious + LM_constraining + LM_strong_modal + LM_weak_modal + complexity, data = sentiment_regression_data)
+reg_10k_bing <- lm(price_adjusted_ratio ~ bing_total_words + bing_sent + bing_positive + bing_negative, data = sentiment_regression_data)
+reg_10k_sentimentr <- lm(price_adjusted_ratio ~ sentimentr, data = sentiment_regression_data)
+reg_10k_afinn <- lm(price_adjusted_ratio ~ afinn_sent, data = sentiment_regression_data)
+reg_10k_nrc <- lm(price_adjusted_ratio ~ nrc_sent + nrc_total_words + nrc_positive + nrc_negative + nrc_anger + nrc_fear + nrc_trust + nrc_sadness + nrc_surprise + nrc_disgust + nrc_joy + nrc_anticipation, data = sentiment_regression_data)
+reg_10k_syuzhet <- lm(price_adjusted_ratio ~ sent_syuzhet, data = sentiment_regression_data)
+reg_10k_vader <- lm(price_adjusted_ratio ~ sent_vader, data = sentiment_regression_data)
+
+library(stargazer)
+
+stargazer::stargazer(reg_10k_LM,reg_10k_bing,reg_10k_sentimentr, reg_10k_afinn, reg_10k_nrc, reg_10k_syuzhet, reg_10k_vader, type = "text")
+```
+
 
 ```{r}
 sector <- unique(sentiment_data$gics_sector)
 
 
-# ----- Sector Level
+# ----- Model sentiment for every Sector
 model_output_sector <- data.frame()
 
 for (s in 1:length(sector)) {
@@ -374,21 +405,20 @@ rm(model_output_sector)
 ```
 
 
-
+## Modelling 10-K: Building Exhaustive Model to predict Stock Price Change
 ```{r}
-
 load(file = '/Volumes/Buku Gibran/edgar/temp/sentiment_data.rda')
 # ----- Stock Price Modelling
 model_data_10k <- sentiment_data %>% 
   filter(form_type == "10-K") %>%
 select(-c(form_type, cik, return_adjusted_price))
 
-
 accession_number <- model_data_10k$accession_number
 year_filed <- model_data_10k$year_filed
-model_data_10k <- model_data_10k %>% select(-year_filed, accession_number) # year_filed is removed so it is not considered by the model
+model_data_10k <- model_data_10k %>% select(-c(year_filed, accession_number)) # year_filed is removed so it is not considered by the model
 
 model_10k <- lm(price_adjusted_ratio ~., data = model_data_10k, na.action=na.exclude)
+
 save(model_10k, file = '/Volumes/Buku Gibran/edgar/temp/model_10k.rda')
 
 load(file = '/Volumes/Buku Gibran/edgar/temp/model_10k.rda')
@@ -428,8 +458,11 @@ ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_valu
 rm(model_df, local_df, top_n)
 ```
 
-
+## Model Evaluation - 10-K
 ```{r}
+
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10k.rda')
+
 rsq <- function (x, y) cor(x, y) ^ 2 # setup R-squared calculation
 
 # ----- Company Level
@@ -446,7 +479,7 @@ company_agg_predicted <- company_agg %>% select(-actual_ratio) %>% mutate(price_
 company_agg <- bind_rows(company_agg_actual, company_agg_predicted)
     
 # ----- Plot Actual vs Model
-ggplot(company_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = company_name)) + coord_cartesian(ylim=c(-50,50)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on company Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', company_agg_rsquared))
+ggplot(company_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = company_name)) + coord_cartesian(ylim=c(-50,50)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-K Model Performance: Actual vs Model', subtitle = 'groupings on company Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', company_agg_rsquared))
 
 rm(company_agg, company_agg_rsquared, company_agg_actual, company_agg_predicted)
 ```
@@ -467,7 +500,7 @@ gics_agg_predicted <- gics_agg %>% select(-actual_ratio) %>% mutate(price_adjust
 gics_agg <- bind_rows(gics_agg_actual, gics_agg_predicted)
     
 # ----- Plot Actual vs Model
-ggplot(gics_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = gics_sector)) + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on GICS Sector Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', gics_agg_rsquared))
+ggplot(gics_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = gics_sector)) + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-K Model Performance: Actual vs Model', subtitle = 'groupings on GICS Sector Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', gics_agg_rsquared))
 
 rm(gics_agg, gics_agg_rsquared, gics_agg_actual, gics_agg_predicted)
 ```
@@ -488,11 +521,134 @@ market_agg_predicted <- market_agg %>% select(-actual_ratio) %>% mutate(price_ad
 market_agg <- bind_rows(market_agg_actual, market_agg_predicted)
     
 # ----- Plot Actual vs Model
-ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + geom_line() + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='Model Performance: Actual vs Model', subtitle = 'groupings on Market Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', market_agg_rsquared))
+ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + geom_line() + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-K Model Performance: Actual vs Model', subtitle = 'groupings on Market Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', market_agg_rsquared))
  
-rm(market_agg, market_agg_rsquared, market_agg_actual, market_agg, market_agg_predicted)
+rm(market_agg, market_agg_rsquared, market_agg_actual, market_agg_predicted)
 ```
 
+
+
+
+
+
+## Modelling - 10-Q
+```{r}
+load(file = '/Volumes/Buku Gibran/edgar/temp/sentiment_data.rda')
+# ----- Stock Price Modelling
+model_data_10q <- sentiment_data %>% 
+  filter(form_type == "10-Q") %>%
+  select(-c(form_type, cik, return_adjusted_price))
+
+accession_number <- model_data_10q$accession_number
+year_filed <- model_data_10q$year_filed
+model_data_10q <- model_data_10q %>% select(-c(year_filed, accession_number)) # year_filed is removed so it is not considered by the model
+
+model_10q <- lm(price_adjusted_ratio ~., data = model_data_10q, na.action=na.exclude)
+
+save(model_10q, file = '/Volumes/Buku Gibran/edgar/temp/model_10q.rda')
+
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_10q.rda')
+model_data_10q$predicted_ratio <- stats::predict(model_10q, newdata = model_data_10q %>% select(-c(price_adjusted_ratio)))
+model_data_10q$year_filed <- year_filed # add back year_filed as to help grouping
+model_data_10q$accession_number <- accession_number
+
+save(model_data_10q, file = '/Volumes/Buku Gibran/edgar/temp/model_data_10q.rda')
+load(file = '/Volumes/Buku Gibran/edgar/temp/model_data_10q.rda')
+
+
+summary(model_10q)
+
+local_df <- head(as.data.frame(summary(model_10q)$coefficients) %>%
+                   tibble::rownames_to_column() %>%
+                   mutate(absolute_t_value = abs(`t value`)) %>%
+                   arrange(desc(absolute_t_value)) , 1000) %>%
+  mutate(rowname=factor(rowname, levels=rowname)) %>%
+  mutate(significance = case_when(`Pr(>|t|)` <= 0.001 ~ 'significant***', `Pr(>|t|)` <= 0.01 ~ 'significant**', `Pr(>|t|)` <= 0.05 ~ 'significant*', TRUE ~ 'not significant')) %>%
+  mutate(r_squared = paste('Multiple R-squared:',as.character(round(summary(model_10q)$r.squared,3)))) %>%
+  mutate(category = case_when(grepl("company_name", rowname, fixed = TRUE) ~ 'Company Feature', grepl("gics_sector", rowname, fixed = TRUE) ~ 'Sector Feature', TRUE ~ 'Sentiment Feature'))
+
+
+feature_category <- c('Sentiment Feature', 'Sector Feature', 'Company Feature')
+
+model_df <- data.frame()
+for(v in 1:length(feature_category)) {
+  top_n <- local_df %>% filter(category == feature_category[v]) %>% arrange(desc(absolute_t_value))
+  top_n <- top_n[1:10,]
+  model_df <- bind_rows(model_df, top_n)
+}
+
+
+ggplot(model_df, aes(x = reorder(rowname, absolute_t_value), y = absolute_t_value, fill=significance)) + geom_bar(stat = "identity") +
+  labs(title ='10-Q Model Descriptives: Top 10 features', subtitle = 'groupings on feature type',y = 'Absolute t-value', x = 'Features', caption = paste0('R-squared = ', as.character(round(summary(model_10q)$r.squared,3)) )) +
+  ylim(0,5) +  coord_flip() +
+  facet_wrap(~category, nrow = 4, scales = "free")
+
+
+rm(model_df, local_df, top_n, sentiment_data)
+```
+
+## Model Evaluation - 10-Q
+```{r}
+# ----- Company Level
+company_agg <-  model_data_10q %>%
+     group_by(year_filed, company_name, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+company_agg_rsquared <- round(rsq(company_agg$actual_ratio, company_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+company_agg_actual <- company_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+company_agg_predicted <- company_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+company_agg <- bind_rows(company_agg_actual, company_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(company_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = company_name)) + coord_cartesian(ylim=c(-50,50)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-Q Model Performance: Actual vs Model', subtitle = 'groupings on company Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', company_agg_rsquared))
+
+rm(company_agg, company_agg_rsquared, company_agg_actual, company_agg_predicted)
+```
+
+
+```{r}
+# ----- GICS Industry Level
+gics_agg <-  model_data_10q %>%
+     group_by(year_filed, gics_sector) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+gics_agg_rsquared <- round(rsq(gics_agg$actual_ratio, gics_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+gics_agg_actual <- gics_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+gics_agg_predicted <- gics_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+gics_agg <- bind_rows(gics_agg_actual, gics_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(gics_agg, aes(x = year_filed, y = price_adjusted_ratio, color = gics_sector)) + geom_line(aes(group = gics_sector)) + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-Q Model Performance: Actual vs Model', subtitle = 'groupings on GICS Sector Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', gics_agg_rsquared))
+
+rm(gics_agg, gics_agg_rsquared, gics_agg_actual, gics_agg_predicted)
+```
+
+
+```{r}
+# ----- Market Level
+market_agg <-  model_data_10q %>%
+     group_by(year_filed) %>%
+    summarise(actual_ratio = mean(price_adjusted_ratio),
+              predicted_ratio = mean(predicted_ratio))
+
+market_agg_rsquared <- round(rsq(market_agg$actual_ratio, market_agg$predicted_ratio), 3) # calculate R-squared between actual and predicted
+  
+market_agg_actual <- market_agg %>% select(-predicted_ratio) %>% mutate(price_adjusted_ratio = actual_ratio, group = 'Actual') %>% select(-actual_ratio)
+market_agg_predicted <- market_agg %>% select(-actual_ratio) %>% mutate(price_adjusted_ratio = predicted_ratio, group = 'Model') %>% select(-predicted_ratio)
+  
+market_agg <- bind_rows(market_agg_actual, market_agg_predicted)
+    
+# ----- Plot Actual vs Model
+ggplot(market_agg, aes(x = year_filed, y = price_adjusted_ratio, group =1)) + geom_line() + coord_cartesian(ylim=c(-10,10)) + facet_wrap(~group, ncol = 4, scales = "free") + labs(title ='10-Q Model Performance: Actual vs Model', subtitle = 'groupings on Market Level',y = '% Change in Stock Price', x = 'Year Filed', caption = paste0('R-squared = ', market_agg_rsquared))
+ 
+rm(market_agg, market_agg_rsquared, market_agg_actual, market_agg_predicted)
+```
 
 
 

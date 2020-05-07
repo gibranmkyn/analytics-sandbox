@@ -2,12 +2,15 @@
 title: "edgar"
 author: "Gibran Makyanie"
 date: "03/04/2020"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 rm(list = ls())
 knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
+knitr::opts_chunk$set(eval = FALSE)
 library(tidyverse)
 library(edgar)
 library(XML)
@@ -17,11 +20,20 @@ library(RSQLite)
 library(tidytext)
 library(udpipe)
 library(rvest)
+library(readxl)
+library(qdap)
+library(sentimentr)
+library(textfeatures)
+library(BatchGetSymbols)
+library(lubridate)
+library(DataExplorer)
+library(gridExtra)
+library(stm)
 ```
 
-# DATA PREPARATION - Stage 1: ETL Process with initial cleaning
+# ETL Initiation
 
-## Downlading Financial Reports
+## Download Financial Reports
 ```{r}
 # ----- The S&P 500
 sp500 <- read_csv('sp500.csv')
@@ -29,15 +41,16 @@ sp500 <- read_csv('sp500.csv')
 # ----- Download MDA chapter 10-K and HTML of 10-Q
 edgar::getMgmtDisc(cik.no = sp500$CIK, filing.year = c(2009:2019))
 edgar::getFilingsHTML(cik.no = sp500$CIK, form.type = '10-Q', filing.year = c(2009:2019))
+```
 
+## Setup SQLite database
+```{r}
 # ----- Initiate SQLite database
 conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
 dbWriteTable(conn,"sp500", sp500) # create sp500 table for information about S&P500
 rm(sp500)
 ```
 
-
-## Master Index
 ```{r}
 # ----- Insert Master Indexes to db
 master_index_list <-list.files('Master Indexes')
@@ -61,7 +74,6 @@ for(i in 1:length(master_index_list)) {
 rm(local_df, year.master)
 ```
 
-
 ```{r}
 # ----- Check Records
 dbGetQuery(conn, 'SELECT count(cik) from master_index') # 20678
@@ -70,8 +82,7 @@ dbGetQuery(conn, 'SELECT count(cik) from sp500') # 505
 dbDisconnect(conn)
 ```
 
-
-## ETL Initiation
+## Import Stop Words from Loughran & McDonald's
 ```{r}
 # ----- Stopwords by Loughran McDonald
 stopw_loughran_mcdonald <- c()
@@ -97,8 +108,9 @@ ud_model <- udpipe_download_model(language = "english", overwrite = F)
 ud_model <- udpipe_load_model(ud_model$file_model)
 ```
 
+# ETL Process
 
-## ETL MD&A chapter 10k reports
+## Process MD&A chapter 10K reports
 ```{r}
 conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
 
@@ -189,7 +201,7 @@ rm(file_path)
 ```
 
 
-## ETL 10Q Reports
+## Process MD&A chapter 10Q reports
 ```{r}
 
 the_index <- dbGetQuery(conn, 'SELECT cik, accession_number FROM master_index WHERE form_type = "10-Q" ')
@@ -305,8 +317,7 @@ print(paste(z, "out of 499"))
 ```
 
 
-# DATA Preparation - Stage 2: Cleaning
-
+# Text Cleaning
 
 ## TF-IDF Stopwords Identification
 ```{r}
@@ -358,9 +369,7 @@ dbExecute(conn, 'ALTER TABLE master_index ADD COLUMN cleaned_text TEXT;') # add 
 dbExecute(conn, 'ALTER TABLE master_index ADD COLUMN cleaned_noun TEXT;') # add clean noun column to master_index
 ```
 
-
-## Final Cleaning
-
+## Retokenise and Remove Stop Words 
 ```{r}
 # ------ 10-K MDA Text Cleaning
 conn <- dbConnect(RSQLite::SQLite(), "edgar.db")
@@ -397,7 +406,6 @@ for(i in 1:nrow(market_level)){
   }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
 }
 ```
-
 
 ```{r}
 # ----- 10-Q Text Cleaning
@@ -436,6 +444,63 @@ for(i in 1:nrow(market_level)){
 
 
 
+# TF-IDF Analysis
+```{r}
+# ----- TF-IDF Market Level
+market_level <- dbGetQuery(conn, 'SELECT year_filed, cleaned_noun FROM master_index')
 
+market_tokens <- market_level %>% 
+  unnest_tokens(word, cleaned_noun) %>% 
+  count(year_filed, word, sort = TRUE) %>% 
+  ungroup() %>%
+  bind_tf_idf(word, year_filed, n)
+rm(market_level)
+
+market_tokens %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% group_by(year_filed) %>%
+  top_n(20) %>%
+  ungroup %>%
+  ggplot(aes(word, tf_idf, fill = year_filed)) + geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf", title = "Important Terms for S&P 500") +
+  facet_wrap(~year_filed, ncol = 4, scales = "free") + coord_flip()
+
+```
+
+
+```{r}
+# ----- TF-IDF Sector Level
+
+
+# ----- Define financial Era
+financial_era <- c('Post Financial Crisis (2009 - 2010)', 'CITIS (2011 - 2012)', 'SICAD (2014 - 2015) ', 'Brexit (2016 - 2019)', 'TCJA (2018 - 2019)') 
+years <- c('2009,2010', '2011,2012', '2014,2015', '2016,2017,2018,2019', '2018,2019')
+
+for (era in 1:length(financial_era)) {
+
+  gics_level <- dbGetQuery(conn, paste0('SELECT gics_sector, cleaned_noun FROM sp500 LEFT JOIN master_index ON master_index.cik =  sp500.cik 
+                             WHERE year_filed IN (', years[era],')'))
+  
+  # ----- Calculate TF-IDF by sector on a financial era
+  gics_tokens <- gics_level %>% 
+    unnest_tokens(word, cleaned_noun) %>% 
+    count(gics_sector, word, sort = TRUE) %>% 
+    ungroup() %>%
+    bind_tf_idf(word, gics_sector, n)
+  rm(gics_level)
+  
+  # ----- Plot the important terms
+  gics_tokens %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word)))) %>% group_by(gics_sector) %>%
+    top_n(20) %>%
+    ungroup %>%
+    ggplot(aes(word, tf_idf, fill = gics_sector)) + geom_col(show.legend = FALSE) +
+    labs(x = NULL, y = "tf-idf", title = paste("Important Terms", financial_era[era]), subtitle = "grouped by GICS sector") +
+    
+    facet_wrap(~gics_sector, ncol = 4, scales = "free") + coord_flip()
+
+}
+```
 
 

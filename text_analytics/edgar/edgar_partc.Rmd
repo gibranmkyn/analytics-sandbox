@@ -2,13 +2,15 @@
 title: "edgar_partc"
 author: "Gibran Makyanie"
 date: "04/05/2020"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
-```{r}
+```{r, message=FALSE}
 rm(list = ls())
 knitr::opts_knit$set(root.dir = '/Volumes/Buku Gibran/edgar')
-
+knitr::opts_chunk$set(eval = FALSE)
 library(tidyverse)
 library(edgar)
 library(XML)
@@ -28,7 +30,6 @@ library(DataExplorer)
 library(gridExtra)
 library(stm)
 ```
-
 
 
 # Data Preparation
@@ -91,7 +92,7 @@ out_10k <- prepDocuments(processed$documents,
 stm_unsupervised_10k <- stm(documents = out_10k$documents, 
                       vocab = out_10k$vocab,
                       K = 0,
-                      prevalence = ~ NULL,
+                      prevalence = NULL,
                       max.em.its = 150,
                       data = out_10k$meta,
                       reportevery = 5,
