@@ -252,6 +252,9 @@ supervised_frex %>%
 
 ```{r}
 
+load(file = '/Volumes/Buku Gibran/edgar/temp/stm_supervised_10k.rda')
+load(file = '/Volumes/Buku Gibran/edgar/temp/out_10k.rda')
+
 # ----- All topics effect
 convergence <- as.data.frame(stm_supervised_10k$theta)
 colnames(convergence) <- paste0("topic",1:70)

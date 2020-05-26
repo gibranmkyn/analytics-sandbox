@@ -80,6 +80,7 @@ for (era in 1:length(financial_era)) {
 }
 ```
 
+
 ```{r}
 dbDisconnect(conn)
 ```
