@@ -1,0 +1,138 @@
+---
+title: "forecasting"
+author: "Gibran Makyanie"
+date: "14/05/2020"
+output: html_document
+---
+
+```{r, message=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(readxl)
+library(forecast)
+```
+
+
+
+## Timeseries Objec
+```{r}
+# Read the data from Excel into R
+mydata <- read_excel("exercise1.xlsx")
+
+# Look at the first few lines of mydata
+head(mydata)
+
+#  Set the year as 1981 and period as 1 (since March belongs to the first quarter of the year) for the start date in form c(year, period).
+myts <- ts(mydata[, 2:4], start = c(1981, 1), frequency = 4) 
+
+```
+
+
+## Timeseries Plot
+```{r}
+# Plot the data with facetting
+forecast::autoplot(myts, facets = TRUE)
+
+# Plot the data without facetting
+forecast::autoplot(myts, facets = FALSE)
+
+# Plot the three series
+forecast::autoplot(gold)
+forecast::autoplot(woolyrnq)
+forecast::autoplot(gas)
+
+# Find the outlier in the gold series
+goldoutlier <- which.max(gold)
+
+# Look at the seasonal frequencies of the three series
+frequency(gold)
+frequency(woolyrnq)
+frequency(gas)
+```
+
+
+## Seasonal Plots
+
+Along with time plots, there are other useful ways of plotting data to emphasize seasonal patterns and show changes in these patterns over time. 
+
+A seasonal plot is similar to a time plot except that the data are plotted against the individual “seasons” in which the data were observed. You can create one using the ggseasonplot() function the same way you do with autoplot().
+An interesting variant of a season plot uses polar coordinates, where the time axis is circular rather than horizontal; to make one, simply add a polar argument and set it to TRUE.
+A subseries plot comprises mini time plots for each season. Here, the mean for each season is shown as a blue horizontal line.
+One way of splitting a time series is by using the window() function, which extracts a subset from the object x observed between the times start and end.
+
+```{r}
+library(fpp2)
+
+# Create plots of the a10 data
+autoplot(a10)
+ggseasonplot(a10)
+
+# Produce a polar coordinate season plot for the a10 data
+ggseasonplot(a10, polar = TRUE)
+
+# Restrict the ausbeer data to start in 1992
+beer <- window(ausbeer, start = 1992)
+
+# Make plots of the beer data
+autoplot(beer)
+ggsubseriesplot(beer)
+```
+
+
+
+## Autocorrelation of non-seasonal time series
+
+
+Time series patterns
+1. Trend ---- A long-term increase or decrease
+2. Seasonal ---- Periodic pattern caused by calendar e.g. quarter, month, or day of the week
+3. Cyclic ---- Rise and falls with no fixed period
+
+
+Seasonal has constant lenght, while cyclic has variable length
+Average lenght of seasonal is shorter than cyclic
+Magnitude of cycle more variable than magnitude of seasonal pattern
+
+```{r}
+# Create an autoplot of the oil data
+autoplot(oil)
+
+# Create a lag plot of the oil data
+gglagplot(oil)
+
+# Create an ACF plot of the oil data
+ggAcf(oil)
+```
+
+
+The correlations associated with the lag plots form what is called the autocorrelation function (ACF). 
+For the oil data, plot the relationship between yt and yt−k, k=1,…,9 using one of the two functions introduced above. Look at how the relationships change as the lag increases.
+
+
+## Autocorrelation of seasonal and cyclic time series
+When data are either seasonal or cyclic, the ACF will peak around the seasonal lags or at the average cycle length. 
+
+You will investigate this phenomenon by plotting the annual sunspot series (which follows the solar cycle of approximately 10-11 years) in sunspot.year and the daily traffic to the Hyndsight blog (which follows a 7-day weekly pattern) in hyndsight. Both objects have been loaded into your workspace.
+
+```{r}
+# Plots of annual sunspot numbers
+autoplot(sunspot.year)
+ggAcf(sunspot.year)
+
+# Save the lag corresponding to maximum autocorrelation
+maxlag_sunspot <- 1
+
+# Plot the traffic on the Hyndsight blog
+autoplot(hyndsight)
+ggAcf(hyndsight)
+
+# Save the lag corresponding to maximum autocorrelation
+maxlag_hyndsight <- 7
+```
+
+Look at the ACF plot for sunspot.year and find the maximum ACF (y), or the tallest bar on the grpah. Its corresponding lag (x) is 1
+
+
+
+
+
